@@ -59,3 +59,16 @@ def count_features(gray: np.ndarray, detector: str = "orb",
         raise ValueError(f"unknown feature detector: {detector!r} (orb|sift)")
     keypoints = det.detect(gray, None)
     return len(keypoints)
+
+
+def dhash(gray: np.ndarray, hash_size: int = 8) -> int:
+    """64-bit difference hash as an int (perceptual, translation-tolerant)."""
+    small = cv2.resize(gray, (hash_size + 1, hash_size), interpolation=cv2.INTER_AREA)
+    diff = small[:, 1:] > small[:, :-1]
+    bits = np.packbits(diff.flatten())
+    return int.from_bytes(bits.tobytes(), "big")
+
+
+def hamming_distance(a: int, b: int) -> int:
+    """Number of differing bits between two hashes."""
+    return bin(a ^ b).count("1")
