@@ -27,6 +27,8 @@ video:
   target_fps: 2.0            # max frames/sec to extract; higher = denser but slower
   max_frames: 2000
   image_max_width: 1920      # downscale wider frames (speed vs detail trade-off)
+  output_format: "jpg"       # jpg | png
+  jpeg_quality: 95
   quality:
     blur_threshold: 100.0    # Laplacian variance below this = blurry, reject
     min_exposure_mean: 15.0  # mean gray below this = too dark, reject

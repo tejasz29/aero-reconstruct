@@ -65,6 +65,8 @@ FFmpeg must be on `PATH` (needed from STEP 2). COLMAP is needed from STEP 5.
 python -m src.cli version    # or: sp3d version
 python -m src.cli doctor     # env + layout + dependency health check
 python -m src.cli init       # (re)create missing project directories
+python -m src.cli extract-frames --video data/raw_videos/flight.mp4
+                             # STEP 2: thinned frames + timestamps.csv -> data/frames/
 ```
 
 Pipeline-stage subcommands (`preprocess`, `calibrate`, `reconstruct`, …) are
@@ -98,8 +100,8 @@ Geometry/coordinate-conversion unit tests are added with STEPS 4–8.
 | STEP | Stage | State |
 |------|-------|-------|
 | 1 | Project structure + environment | ✅ done |
-| 2 | Video loading + frame extraction | ⬜ next |
-| 3 | Frame quality + keyframe selection | ⬜ |
+| 2 | Video loading + frame extraction | ✅ done |
+| 3 | Frame quality + keyframe selection | ⬜ next |
 | 4 | Camera calibration | ⬜ |
 | 5 | COLMAP/SfM baseline | ⬜ |
 | 6 | Trajectory visualisation | ⬜ |
@@ -113,6 +115,6 @@ Geometry/coordinate-conversion unit tests are added with STEPS 4–8.
 | 18–19 | Viewer + backend | ⬜ |
 | 20 | Near-real-time optimisation | ⬜ (after offline works) |
 
-**Next recommended step: STEP 2** — video loading + frame extraction
-(`src/video/`): FPS detection, timestamp extraction, frame dump,
-`timestamps.csv`. No quality scoring yet (that's STEP 3).
+**Next recommended step: STEP 3** — frame quality + keyframe selection
+(`src/video/`): Laplacian-blur scoring, exposure check, feature-count
+scoring, duplicate removal, writing the selected keyframe list.
