@@ -147,3 +147,56 @@ def select_keyframes(
 
     log.info("keyframes: %d kept / %d scored", len(kept), len(verdicts))
     return verdicts
+
+
+def write_scores_csv(path: str | Path, scored: list[FrameScore]) -> Path:
+    path = Path(path)
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(SCORES_HEADER)
+        for s in scored:
+            writer.writerow([s.frame_id, s.source_index, f"{s.timestamp_s:.6f}",
+                             s.filename, f"{s.blur:.3f}", f"{s.exposure:.3f}",
+                             s.features, int(s.kept), s.reject_reason])
+    return path
+
+
+def write_keyframes_csv(path: str | Path, kept: list[FrameScore]) -> Path:
+    path = Path(path)
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(KEYFRAMES_HEADER)
+        for s in kept:
+            writer.writerow([s.frame_id, s.source_index,
+                             f"{s.timestamp_s:.6f}", s.filename])
+    return path
+
+
+def run_selection(
+    frames_dir: str | Path,
+    blur_threshold: float,
+    exposure_min: float,
+    exposure_max: float,
+    min_features: int,
+    min_time_gap_s: float = 0.0,
+    dedup_hamming_threshold: int = 5,
+    max_keep: int | None = None,
+    detector: str = "orb",
+) -> SelectionResult:
+    """Full STEP 3 run: score -> select -> write both CSVs."""
+    frames_dir = Path(frames_dir)
+    scored = score_frames(frames_dir, detector=detector)
+    hashes = {s.frame_id: dhash(load_gray(frames_dir / s.filename)) for s in scored}
+    verdicts = select_keyframes(
+        scored, hashes, blur_threshold, exposure_min, exposure_max,
+        min_features, min_time_gap_s, dedup_hamming_threshold, max_keep)
+    kept = [s for s in verdicts if s.kept]
+    result = SelectionResult(
+        frames_dir=frames_dir,
+        scores_path=write_scores_csv(frames_dir / SCORES_CSV, verdicts),
+        keyframes_path=write_keyframes_csv(frames_dir / KEYFRAMES_CSV, kept),
+        scored=verdicts,
+        kept=kept,
+    )
+    log.info("selection: %d kept, rejected=%s", len(kept), result.rejected_counts)
+    return result
