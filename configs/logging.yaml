@@ -1,0 +1,12 @@
+# Logging configuration consumed by src.common.logging_utils.
+# Simple schema on purpose: level, console output, rotating file output.
+logging:
+  level: "INFO"                       # DEBUG | INFO | WARNING | ERROR
+  console: true
+  format: "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
+  datefmt: "%Y-%m-%d %H:%M:%S"
+  file:
+    enabled: true
+    path: "outputs/reports/run.log"   # created on demand
+    max_bytes: 5242880                # 5 MB per file
+    backup_count: 3
