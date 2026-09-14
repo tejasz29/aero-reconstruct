@@ -143,3 +143,13 @@ def extract_frames(
     log.info("extracted %d/%d frames -> %s (+ %s)",
              len(rows), info.frame_count, out, TIMESTAMPS_CSV)
     return ExtractionResult(info=info, out_dir=out, csv_path=csv_path, frames=rows)
+
+
+def read_timestamps_csv(frames_dir: str | Path) -> list[dict]:
+    """Read back ``timestamps.csv`` as a list of row dicts (STEP 3 input)."""
+    path = Path(frames_dir) / TIMESTAMPS_CSV
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"{TIMESTAMPS_CSV} not found in {frames_dir} — run extract-frames first")
+    with open(path, newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
