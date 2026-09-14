@@ -1,0 +1,20 @@
+# Conda environment for single-pass-3d (offline MVP).
+# Create:   conda env create -f environment.yml
+# Activate: conda activate single-pass-3d
+#
+# The heavy GPU packages (torch w/ CUDA) are installed via pip because
+# conda-forge CUDA builds lag PyTorch releases. The pip section below
+# installs the CPU torch first; for CUDA support run this AFTER env
+# creation (pick the CUDA build matching your driver):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+name: single-pass-3d
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - ffmpeg
+  - gdal>=3.7            # helps rasterio on Windows
+  - pip:
+      - -r requirements.txt
