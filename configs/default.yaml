@@ -30,13 +30,15 @@ video:
   output_format: "jpg"       # jpg | png
   jpeg_quality: 95
   quality:
+    detector: "orb"          # orb (fast) | sift (slower, denser)
     blur_threshold: 100.0    # Laplacian variance below this = blurry, reject
     min_exposure_mean: 15.0  # mean gray below this = too dark, reject
     max_exposure_mean: 240.0 # mean gray above this = saturated, reject
     min_features: 300        # frames with fewer good features are rejected
   keyframes:
     min_time_gap_s: 0.5
-    min_translation_m: 1.0   # approx., once metric scale is known
+    dedup_hamming_threshold: 5  # dHash bits; lower = stricter duplicate removal
+    min_translation_m: 1.0   # approx., enforced from STEP 8 (needs metric scale)
     max_keep: 600
 
 # --- STEP 4: camera calibration ---

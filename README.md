@@ -67,6 +67,8 @@ python -m src.cli doctor     # env + layout + dependency health check
 python -m src.cli init       # (re)create missing project directories
 python -m src.cli extract-frames --video data/raw_videos/flight.mp4
                              # STEP 2: thinned frames + timestamps.csv -> data/frames/
+python -m src.cli select-keyframes
+                             # STEP 3: frame_scores.csv + keyframes.csv in data/frames/
 ```
 
 Pipeline-stage subcommands (`preprocess`, `calibrate`, `reconstruct`, …) are
@@ -101,7 +103,8 @@ Geometry/coordinate-conversion unit tests are added with STEPS 4–8.
 |------|-------|-------|
 | 1 | Project structure + environment | ✅ done |
 | 2 | Video loading + frame extraction | ✅ done |
-| 3 | Frame quality + keyframe selection | ⬜ next |
+| 3 | Frame quality + keyframe selection | ✅ done |
+| 4 | Camera calibration | ⬜ next |
 | 4 | Camera calibration | ⬜ |
 | 5 | COLMAP/SfM baseline | ⬜ |
 | 6 | Trajectory visualisation | ⬜ |
@@ -115,6 +118,6 @@ Geometry/coordinate-conversion unit tests are added with STEPS 4–8.
 | 18–19 | Viewer + backend | ⬜ |
 | 20 | Near-real-time optimisation | ⬜ (after offline works) |
 
-**Next recommended step: STEP 3** — frame quality + keyframe selection
-(`src/video/`): Laplacian-blur scoring, exposure check, feature-count
-scoring, duplicate removal, writing the selected keyframe list.
+**Next recommended step: STEP 4** — camera calibration
+(`src/calibration/`): load provided intrinsics into `calibration/camera.yaml`,
+otherwise checkerboard/Charuco calibration from calibration photos.
