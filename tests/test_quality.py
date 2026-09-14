@@ -116,3 +116,44 @@ def test_max_keep_uniform_subsample():
     out = _select(rows, max_keep=2)
     kept = [r.frame_id for r in out if r.kept]
     assert kept == [0, 3]  # uniform coverage, not just the first two
+
+
+# --- end-to-end ---
+
+def _frames_fixture(frames_dir):
+    """5 frames: sharp kept; gradient/dark/bright/blank rejected."""
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    images = {
+        "frame_000000.jpg": checkerboard(),
+        "frame_000001.jpg": np.tile(np.linspace(0, 255, 240).astype(np.uint8), (240, 1)),
+        "frame_000002.jpg": np.zeros((240, 240), np.uint8),
+        "frame_000003.jpg": np.full((240, 240), 255, np.uint8),
+        "frame_000004.jpg": np.full((240, 240), 128, np.uint8),
+    }
+    for name, img in images.items():
+        cv2.imwrite(str(frames_dir / name), img)
+    with open(frames_dir / TIMESTAMPS_CSV, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["frame_id", "source_index", "timestamp_s",
+                         "filename", "width", "height"])
+        for i, name in enumerate(images):
+            writer.writerow([i, i, f"{float(i):.6f}", name, 240, 240])
+    return frames_dir
+
+
+def test_run_selection_end_to_end(tmp_path):
+    frames_dir = _frames_fixture(tmp_path / "frames")
+    result = run_selection(
+        frames_dir, blur_threshold=100.0, exposure_min=15.0,
+        exposure_max=240.0, min_features=10, detector="orb")
+    assert [s.filename for s in result.kept] == ["frame_000000.jpg"]
+    assert result.rejected_counts == {"blur": 2, "exposure": 2}
+    assert result.scores_path == frames_dir / SCORES_CSV
+    assert result.keyframes_path == frames_dir / KEYFRAMES_CSV
+    with open(frames_dir / KEYFRAMES_CSV, newline="", encoding="utf-8") as fh:
+        assert len(list(csv.DictReader(fh))) == 1
+
+
+def test_read_timestamps_csv_missing_raises(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        read_timestamps_csv(tmp_path)
