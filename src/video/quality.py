@@ -41,3 +41,21 @@ def blur_score(gray: np.ndarray) -> float:
 def exposure_mean(gray: np.ndarray) -> float:
     """Mean gray value in [0, 255]."""
     return float(gray.mean())
+
+
+def count_features(gray: np.ndarray, detector: str = "orb",
+                   nfeatures: int = 2000) -> int:
+    """Number of detectable keypoints (ORB default; SIFT on request)."""
+    name = detector.lower()
+    if name == "sift":
+        try:
+            det = cv2.SIFT_create(nfeatures)
+        except (AttributeError, cv2.error) as exc:
+            log.warning("SIFT unavailable (%s) — falling back to ORB", exc)
+            det = cv2.ORB_create(nfeatures)
+    elif name == "orb":
+        det = cv2.ORB_create(nfeatures)
+    else:
+        raise ValueError(f"unknown feature detector: {detector!r} (orb|sift)")
+    keypoints = det.detect(gray, None)
+    return len(keypoints)
