@@ -36,3 +36,8 @@ def load_gray(path: str | Path) -> np.ndarray:
 def blur_score(gray: np.ndarray) -> float:
     """Laplacian variance — higher means sharper."""
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+def exposure_mean(gray: np.ndarray) -> float:
+    """Mean gray value in [0, 255]."""
+    return float(gray.mean())
