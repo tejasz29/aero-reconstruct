@@ -64,3 +64,23 @@ class SelectionResult:
     @property
     def rejected_counts(self) -> dict[str, int]:
         return dict(Counter(s.reject_reason for s in self.scored if not s.kept))
+
+
+def score_frames(frames_dir: str | Path, detector: str = "orb") -> list[FrameScore]:
+    """Score every frame listed in ``timestamps.csv`` (timestamp order)."""
+    frames_dir = Path(frames_dir)
+    rows = read_timestamps_csv(frames_dir)
+    scored: list[FrameScore] = []
+    for row in tqdm(rows, desc="scoring", unit="frm"):
+        gray = load_gray(frames_dir / row["filename"])
+        scored.append(FrameScore(
+            frame_id=int(row["frame_id"]),
+            source_index=int(row["source_index"]),
+            timestamp_s=float(row["timestamp_s"]),
+            filename=row["filename"],
+            blur=blur_score(gray),
+            exposure=exposure_mean(gray),
+            features=count_features(gray, detector=detector),
+        ))
+    log.info("scored %d frames with detector=%s", len(scored), detector)
+    return scored
