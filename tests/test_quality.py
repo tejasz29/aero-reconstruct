@@ -157,3 +157,12 @@ def test_run_selection_end_to_end(tmp_path):
 def test_read_timestamps_csv_missing_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         read_timestamps_csv(tmp_path)
+
+
+def test_cli_select_keyframes(tmp_path):
+    frames_dir = _frames_fixture(tmp_path / "frames")
+    rc = cli.main(["select-keyframes", "--frames-dir", str(frames_dir),
+                   "--config", "configs/default.yaml"])
+    assert rc == 0
+    assert (frames_dir / SCORES_CSV).is_file()
+    assert (frames_dir / KEYFRAMES_CSV).is_file()

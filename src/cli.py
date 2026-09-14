@@ -17,6 +17,8 @@ or, after ``pip install -e .``::
 * ``init``    — create any missing project directories (idempotent).
 * ``extract-frames`` — STEP 2: probe a drone video and dump thinned
   frames + timestamps.csv.
+* ``select-keyframes`` — STEP 3: score frames, drop bad/duplicate ones,
+  write frame_scores.csv + keyframes.csv.
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """
@@ -32,6 +34,7 @@ from src.common.config_loader import get, load_config
 from src.common.logging_utils import get_logger, setup_logging
 from src.common.paths import PROJECT_ROOT, project_paths
 from src.video.frame_extractor import extract_frames
+from src.video.keyframes import run_selection
 
 VERSION = "0.1.0"
 
@@ -133,6 +136,37 @@ def cmd_extract_frames(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_select_keyframes(args: argparse.Namespace) -> int:
+    """STEP 3 — score frames and select keyframes."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    frames_dir = Path(args.frames_dir) if args.frames_dir else Path(
+        get(cfg, "paths.frames", "data/frames"))
+    if not frames_dir.is_absolute():
+        frames_dir = PROJECT_ROOT / frames_dir
+
+    result = run_selection(
+        frames_dir,
+        blur_threshold=float(get(cfg, "video.quality.blur_threshold", 100.0)),
+        exposure_min=float(get(cfg, "video.quality.min_exposure_mean", 15.0)),
+        exposure_max=float(get(cfg, "video.quality.max_exposure_mean", 240.0)),
+        min_features=int(get(cfg, "video.quality.min_features", 300)),
+        min_time_gap_s=float(get(cfg, "video.keyframes.min_time_gap_s", 0.0)),
+        dedup_hamming_threshold=int(
+            get(cfg, "video.keyframes.dedup_hamming_threshold", 5)),
+        max_keep=int(get(cfg, "video.keyframes.max_keep", 600)),
+        detector=str(get(cfg, "video.quality.detector", "orb")),
+    )
+    print(f"scored : {len(result.scored)} frames in {result.frames_dir}")
+    print(f"kept   : {len(result.kept)} keyframes -> {result.keyframes_path.name}")
+    print(f"scores : {result.scores_path.name} (with reject reasons)")
+    if result.rejected_counts:
+        print("rejected: " + ", ".join(
+            f"{reason}={n}" for reason, n in sorted(result.rejected_counts.items())))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sp3d",
@@ -153,6 +187,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="override video.target_fps.")
     ex.add_argument("--max-frames", type=int, default=None,
                     help="override video.max_frames.")
+
+    sk = sub.add_parser("select-keyframes",
+                        help="STEP 3: score frames and select keyframes.")
+    sk.add_argument("--frames-dir", default=None,
+                    help="frames dir with timestamps.csv (default: from config).")
+    sk.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
@@ -160,7 +200,8 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging(level="WARNING")  # keep CLI output clean; stages configure their own
     args = build_parser().parse_args(argv)
     handlers = {"version": cmd_version, "doctor": cmd_doctor, "init": cmd_init,
-                "extract-frames": cmd_extract_frames}
+                "extract-frames": cmd_extract_frames,
+                "select-keyframes": cmd_select_keyframes}
     return handlers[args.command](args)
 
 
