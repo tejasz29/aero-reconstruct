@@ -1,0 +1,45 @@
+# ============================================================
+# single-pass-3d — runtime dependencies (offline MVP)
+# Target interpreter: Python 3.10 / 3.11  (see README)
+# Install:  pip install -r requirements.txt
+# NOTE: torch installs the CPU build by default. For NVIDIA CUDA,
+# install torch/torchvision FIRST from the PyTorch CUDA index, e.g.:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# then: pip install -r requirements.txt
+# ============================================================
+
+# --- core numerics / vision ---
+numpy>=1.26.0
+scipy>=1.11.0
+opencv-python>=4.8.0
+pillow>=10.0.0
+imageio>=2.33.0
+imageio-ffmpeg>=0.4.9
+
+# --- AI: depth + segmentation (GPU preferred) ---
+torch>=2.2.0
+torchvision>=0.17.0
+transformers>=4.38.0      # Depth Anything family via HuggingFace
+timm>=0.9.0               # backbone dependency of several depth models
+ultralytics>=8.2.0        # YOLO segmentation for dynamic-object masking
+
+# --- 3D ---
+open3d>=0.18.0
+
+# --- geospatial ---
+pyproj>=3.6.0
+rasterio>=1.3.0
+shapely>=2.0.0
+laspy>=2.5.0              # LAS/LAZ point-cloud export
+
+# --- data / reporting ---
+pandas>=2.0.0
+tqdm>=4.66.0
+matplotlib>=3.8.0
+piexif>=1.1.3
+pyyaml>=6.0.0
+
+# --- backend API ---
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9   # video/metadata upload endpoints
