@@ -84,3 +84,66 @@ def score_frames(frames_dir: str | Path, detector: str = "orb") -> list[FrameSco
         ))
     log.info("scored %d frames with detector=%s", len(scored), detector)
     return scored
+
+
+def select_keyframes(
+    scored: list[FrameScore],
+    hashes: dict[int, int],
+    blur_threshold: float,
+    exposure_min: float,
+    exposure_max: float,
+    min_features: int,
+    min_time_gap_s: float = 0.0,
+    dedup_hamming_threshold: int = 5,
+    max_keep: int | None = None,
+) -> list[FrameScore]:
+    """Apply gates + dedup to scored frames; returns all rows with verdicts.
+
+    Greedy pass in timestamp order: a frame survives only if it passes all
+    quality gates, is ``min_time_gap_s`` after the last kept frame, and its
+    dHash differs by more than ``dedup_hamming_threshold`` bits from every
+    kept frame. Survivors beyond ``max_keep`` are uniform-subsampled.
+    Pure function — fully unit-testable.
+    """
+    ordered = sorted(scored, key=lambda s: s.timestamp_s)
+    verdicts = [dataclasses.replace(s) for s in ordered]
+
+    survivors: list[FrameScore] = []
+    for row in verdicts:
+        if not (exposure_min <= row.exposure <= exposure_max):
+            row.reject_reason = "exposure"
+        elif row.blur < blur_threshold:
+            row.reject_reason = "blur"
+        elif row.features < min_features:
+            row.reject_reason = "features"
+        else:
+            survivors.append(row)
+
+    kept: list[FrameScore] = []
+    last_time: float | None = None
+    for row in survivors:
+        if last_time is not None and row.timestamp_s - last_time < min_time_gap_s:
+            row.reject_reason = "time_gap"
+            continue
+        digest = hashes.get(row.frame_id)
+        if (digest is not None and kept and dedup_hamming_threshold >= 0
+                and any(hamming_distance(digest, hashes.get(k.frame_id, -1))
+                        <= dedup_hamming_threshold for k in kept
+                        if k.frame_id in hashes)):
+            row.reject_reason = "duplicate"
+            continue
+        row.kept = True
+        kept.append(row)
+        last_time = row.timestamp_s
+
+    if max_keep is not None and max_keep > 0 and len(kept) > max_keep:
+        step = len(kept) / max_keep
+        keep_ids = {kept[int(i * step)].frame_id for i in range(max_keep)}
+        for row in kept:
+            if row.frame_id not in keep_ids:
+                row.kept = False
+                row.reject_reason = "max_keep"
+        kept = [row for row in kept if row.kept]
+
+    log.info("keyframes: %d kept / %d scored", len(kept), len(verdicts))
+    return verdicts
