@@ -69,9 +69,13 @@ python -m src.cli extract-frames --video data/raw_videos/flight.mp4
                              # STEP 2: thinned frames + timestamps.csv -> data/frames/
 python -m src.cli select-keyframes
                              # STEP 3: frame_scores.csv + keyframes.csv in data/frames/
+python -m src.cli calibrate
+                             # STEP 4: calibration/camera.yaml from provided intrinsics,
+                             #         checkerboard photos, or Charuco photos
+                             #   + report = outputs/reports/calibration_report.json
 ```
 
-Pipeline-stage subcommands (`preprocess`, `calibrate`, `reconstruct`, …) are
+Pipeline-stage subcommands (`preprocess`, `reconstruct`, …) are
 added in their respective steps.
 
 ## 4. Configuration
@@ -95,7 +99,8 @@ python -m pytest tests/ -v
 
 Current coverage (STEP 1): layout integrity, config load/merge/`get()`,
 logging (file + rotation + YAML-driven), CLI smoke tests.
-Geometry/coordinate-conversion unit tests are added with STEPS 4–8.
+(STEP 2) frame extraction math, (STEP 3) quality scorers + keyframe selection,
+(STEP 4) intrinsics model + checkerboard/Charuco + expected-output runner tests.
 
 ## 6. Pipeline status
 
@@ -104,9 +109,8 @@ Geometry/coordinate-conversion unit tests are added with STEPS 4–8.
 | 1 | Project structure + environment | ✅ done |
 | 2 | Video loading + frame extraction | ✅ done |
 | 3 | Frame quality + keyframe selection | ✅ done |
-| 4 | Camera calibration | ⬜ next |
-| 4 | Camera calibration | ⬜ |
-| 5 | COLMAP/SfM baseline | ⬜ |
+| 4 | Camera calibration | ✅ done |
+| 5 | COLMAP/SfM baseline | ⬜ next |
 | 6 | Trajectory visualisation | ⬜ |
 | 7 | GPS parsing + metric conversion | ⬜ |
 | 8 | Visual ↔ GPS alignment | ⬜ |
@@ -118,6 +122,6 @@ Geometry/coordinate-conversion unit tests are added with STEPS 4–8.
 | 18–19 | Viewer + backend | ⬜ |
 | 20 | Near-real-time optimisation | ⬜ (after offline works) |
 
-**Next recommended step: STEP 4** — camera calibration
-(`src/calibration/`): load provided intrinsics into `calibration/camera.yaml`,
-otherwise checkerboard/Charuco calibration from calibration photos.
+**Next recommended step: STEP 5** — COLMAP/SfM baseline
+(`src/sfm/`, `src/tracking/`): sparse reconstruction of the keyframes into
+`outputs/trajectory/camera_poses.csv`, using the STEP 4 intrinsics.

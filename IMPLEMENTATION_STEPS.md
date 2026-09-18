@@ -1,10 +1,10 @@
-# single-pass-3d — Full Implementation Steps
+# single-pass-3d — Full Implementation Steps  session id-ses_f6181e32effeQYcoluE1IoxOJA
 
 Source of truth for build order. A step is **done** only when: implemented,
 tested green, demoed on real or synthetic data, README status updated, and
 committed + pushed. Never start the next step on a broken tree.
 
-**Progress: STEPS 1–3 done (31 commits) · STEP 4 next · 39/39 tests passing.**
+**Progress: STEPS 1–4 done (32 commits + STEP 4 commit(s)) · STEP 5 next · 53/53 tests passing.**
 
 Conventions every step follows: tunables live in `configs/default.yaml`
 (never hard-coded); every stage logs via `src.common.logging_utils`;
@@ -93,14 +93,36 @@ scoring · `8a7578d` gates + dedup · `3555712` writers + run · `bdb2beb` API �
 
 ---
 
-## STEP 4 — Camera calibration ⬜ next
+## STEP 4 — Camera calibration ✅ done
 
 **What:** Fill `calibration/camera.yaml` with real intrinsics (fx, fy, cx, cy,
-distortion). **Inputs:** vendor intrinsics if provided, else calibration
-photos (checkerboard/Charuco). **Outputs:** validated `camera.yaml` with
-reprojection error. **Files:** `src/calibration/` (loader, checkerboard +
-Charuco calibrators, validation) · CLI `calibrate`. **Tests:** projection /
-unprojection round-trip, distortion-model sanity, reprojection-error bounds.
+distortion).
+**Inputs:** vendor intrinsics if provided (`calibration.source=provided`),
+else calibration photos — checkerboard or Charuco board.
+**Algorithm:** `Intrinsics` model is the canonical K (`camera_matrix()`),
+loaded/saved in YAML, validated (positive focal, sane principal point). Board
+solvers use `cv2.calibrateCamera` (checkerboard: `findChessboardCornersSB`;
+Charuco: `CharucoDetector` + `getChessboardCorners` id indexing, plain
+`calibrateCamera` fallback for envs with `calibrateCameraCharuco`). A runner
+(`resolve_calibration`) picks the source and writes `camera.yaml`, a JSON
+report, and annotated views; reprojection error vs threshold verdict.
+
+**Files:** `src/calibration/{intrinsics,checkerboard,charuco,runner}.py` ·
+`src/cli.py` += `calibrate` · config += `calibration.provided_file`,
+`calibration.images_dir`, `calibration.checkerboard`, `calibration.charuco`,
+`calibration.validation.max_reprojection_error_px`, `paths.reports`.
+
+**Outputs:** `calibration/camera.yaml` (intrinsics + distortion + RMS) ·
+`outputs/reports/calibration_report.json` + annotated views under
+`outputs/reports/calibration/`.
+**Tests:** 53 passed (+14: intrinsics model round-trip/validate/undistort,
+checkerboard detect + ground-truth calibration recover K, needed-min-views,
+Charuco detect + calibration on rendered boards, runner e2e for all three
+sources incl. unknown-source error).
+**Verify:** `python -m src.cli calibrate` (config-driven; source & paths in
+`configs/default.yaml` or a run-config YAML) → check `camera.yaml` + report.
+
+**Commits:** STEP 4 commits listed after push (see git log).
 
 ## STEP 5 — COLMAP / SfM baseline ⬜
 
