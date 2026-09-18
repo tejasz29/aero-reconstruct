@@ -159,6 +159,11 @@ def _write_outputs(cfg: dict[str, Any], root: Path, intrinsics: Intrinsics,
         log.info("calibration report -> %s (rms %.3f px, verdict %s)",
                  report_path, result.rms_px,
                  "PASS" if report["within_threshold"] else "CHECK")
+
+        if result.method == "checkerboard":
+            _annotate_checkerboard(result, cal_dir)
+        else:
+            _annotate_charuco(result, cal_dir)
     else:
         report = {"method": "provided", "intrinsics": intrinsics.to_dict(),
                   "calibrated_on": time.strftime("%Y-%m-%dT%H:%M:%S")}
@@ -170,3 +175,33 @@ def _write_outputs(cfg: dict[str, Any], root: Path, intrinsics: Intrinsics,
         log.warning("calibration RMS %.3f px exceeds threshold — model saved but "
                     "flagged CHECK in the report", result.rms_px)
     return intrinsics
+
+
+def _annotate_checkerboard(result: CalibrationResult, out_dir: Path) -> None:
+    """Redraw detected corners + per-view RMS on each used view."""
+    if result.pattern_size is None:
+        return
+    for path, _err, _n in result.per_view_rms_px:
+        image = cv2.imread(str(path))
+        if image is None:
+            continue
+        corners = detect_checkerboard(image, result.pattern_size)
+        if corners is not None:
+            for c in corners:
+                cv2.circle(image, (int(round(c[0])), int(round(c[1]))), 3,
+                           (0, 0, 255), -1)
+        cv2.putText(image, f"rms {_err:.2f}px", (8, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        cv2.imwrite(str(out_dir / f"checked_{path.stem}.jpg"), image)
+
+
+def _annotate_charuco(result: CalibrationResult, out_dir: Path) -> None:
+    # Lightweight audit: copy used views with a small stamp; full corner
+    # redraw for Charuco is optional and board-state dependent.
+    for path, err, _n in result.per_view_rms_px:
+        image = cv2.imread(str(path))
+        if image is None:
+            continue
+        cv2.putText(image, f"rms {err:.2f}px", (8, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        cv2.imwrite(str(out_dir / f"checked_{path.stem}.jpg"), image)
