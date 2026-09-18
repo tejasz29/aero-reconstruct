@@ -68,3 +68,35 @@ class Intrinsics:
                 f"distortion must have {DISTORTION_SIZE} coeffs "
                 f"(k1,k2,p1,p2,k3), got {len(self.distortion)}")
         return self
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source": self.source,
+            "image_width": self.width,
+            "image_height": self.height,
+            "fx": float(self.fx),
+            "fy": float(self.fy),
+            "cx": float(self.cx),
+            "cy": float(self.cy),
+            "distortion": list(self.distortion),
+            "reprojection_error_px": (float(self.reprojection_error_px)
+                                      if self.reprojection_error_px is not None else None),
+            "calibrated_on": self.calibrated_on,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Intrinsics":
+        cam = data.get("camera") or data
+        dist = cam.get("distortion") or []
+        return cls(
+            fx=float(cam["fx"]),
+            fy=float(cam["fy"]),
+            cx=float(cam["cx"]),
+            cy=float(cam["cy"]),
+            width=int(cam["image_width"]),
+            height=int(cam["image_height"]),
+            distortion=tuple(float(d) for d in dist[:DISTORTION_SIZE]) if dist else (0.0,) * DISTORTION_SIZE,
+            source=str(cam.get("source") or "unknown"),
+            reprojection_error_px=cam.get("reprojection_error_px"),
+            calibrated_on=cam.get("calibrated_on"),
+        )
