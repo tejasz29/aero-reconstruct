@@ -61,3 +61,70 @@ def detect_checkerboard(image: np.ndarray,
             criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_COUNT, 40, 1e-4)
             corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
     return corners.reshape(-1, 2).astype(np.float32) if ok else None
+
+
+def calibrate_checkerboard(
+    images: list[str | Path],
+    pattern_size: tuple[int, int],
+    square_size_m: float,
+    image_size: tuple[int, int] | None = None,
+) -> CalibrationResult:
+    """Calibrate from a list of checkerboard photos.
+
+    ``pattern_size = (cols, rows)`` = inner corners per row/column (OpenCV
+    convention; e.g. (9, 6) for a classic 9x6 board).
+    """
+    objp = checkerboard_object_points(pattern_size, square_size_m)
+    object_pts: list[np.ndarray] = []
+    image_pts: list[np.ndarray] = []
+    used: list[Path] = []
+    rejected: list[tuple[Path, str]] = []
+    resolved_size: tuple[int, int] | None = None
+
+    for img_path in tqdm(images, desc="checkerboard", unit="img"):
+        img_path = Path(img_path)
+        image = cv2.imread(str(img_path))
+        if image is None:
+            rejected.append((img_path, "unreadable"))
+            continue
+        if resolved_size is None or image_size is not None:
+            resolved_size = image_size or (image.shape[1], image.shape[0])
+        corners = detect_checkerboard(image, pattern_size)
+        if corners is None:
+            rejected.append((img_path, "pattern_not_detected"))
+            continue
+        object_pts.append(objp)
+        image_pts.append(corners)
+        used.append(img_path)
+
+    if resolved_size is None:
+        raise ValueError("no readable images supplied for calibration")
+    if len(used) < 3:
+        raise ValueError(
+            f"checkerboard needs >= 3 views, only {len(used)} detected "
+            f"(rejected={len(rejected)})")
+
+    rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
+        object_pts, image_pts, resolved_size, None, None)
+
+    intrinsics = Intrinsics(
+        fx=float(K[0, 0]), fy=float(K[1, 1]), cx=float(K[0, 2]), cy=float(K[1, 2]),
+        width=resolved_size[0], height=resolved_size[1],
+        distortion=tuple(float(d) for d in np.asarray(dist).ravel()),
+        source="checkerboard", reprojection_error_px=float(rms),
+        calibrated_on=__import__("time").strftime("%Y-%m-%d"),
+    ).validate()
+
+    per_view: list[tuple[Path, float, int]] = []
+    for path, obj, img, rvec, tvec in zip(used, object_pts, image_pts, rvecs, tvecs):
+        projected, _ = cv2.projectPoints(obj, rvec, tvec, K, dist)
+        err = float(np.sqrt(np.mean(np.sum((projected.reshape(-1, 2) - img) ** 2,
+                                           axis=1))))
+        per_view.append((path, err, len(img)))
+
+    log.info("checkerboard calibration: rms=%.3f px across %d views",
+             float(rms), len(used))
+    return CalibrationResult(
+        intrinsics=intrinsics, rms_px=float(rms),
+        used_images=used, rejected_images=rejected, per_view_rms_px=per_view,
+        method="checkerboard", pattern_size=pattern_size)
