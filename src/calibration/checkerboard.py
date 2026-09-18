@@ -40,3 +40,24 @@ def checkerboard_object_points(pattern_size: tuple[int, int],
     objp = np.zeros((cols * rows, 3), np.float32)
     objp[:, :2] = np.mgrid[0:cols, 0:rows].T.reshape(-1, 2) * float(square_size_m)
     return objp
+
+
+def detect_checkerboard(image: np.ndarray,
+                        pattern_size: tuple[int, int]) -> np.ndarray | None:
+    """Inner-corner positions as float32 Nx2, or None when not detected.
+
+    Uses the robust ``findChessboardCornersSB`` detector when available
+    (OpenCV >= 4.5.1) and falls back to the classic detector + corner
+    refinement otherwise.
+    """
+    gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    if hasattr(cv2, "findChessboardCornersSB"):
+        # SB detector only accepts CALIB_CB_NORMALIZE_IMAGE / FAST_CHECK flags.
+        ok, corners = cv2.findChessboardCornersSB(gray, pattern_size)
+    else:
+        flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
+        ok, corners = cv2.findChessboardCorners(gray, pattern_size, flags)
+        if ok:
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_COUNT, 40, 1e-4)
+            corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+    return corners.reshape(-1, 2).astype(np.float32) if ok else None
