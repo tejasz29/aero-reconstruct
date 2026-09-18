@@ -86,3 +86,92 @@ def detect_charuco(image: np.ndarray, board, camera_matrix=None,
     if corners is None or len(corners) == 0:
         return None, None
     return corners, np.asarray(ids, np.int32).reshape(-1, 1)
+
+
+def calibrate_charuco(
+    images: list[str | Path],
+    rows: int,
+    cols: int,
+    square_length_m: float,
+    marker_length_m: float,
+    image_size: tuple[int, int] | None = None,
+) -> CalibrationResult:
+    """Calibrate intrinsics from a list of Charuco board photos."""
+    board = charuco_board(rows, cols, square_length_m, marker_length_m)
+    all_corners: list[np.ndarray] = []
+    all_ids: list[np.ndarray] = []
+    used: list[Path] = []
+    rejected: list[tuple[Path, str]] = []
+    resolved_size: tuple[int, int] | None = None
+
+    for img_path in tqdm(images, desc="charuco", unit="img"):
+        img_path = Path(img_path)
+        image = cv2.imread(str(img_path))
+        if image is None:
+            rejected.append((img_path, "unreadable"))
+            continue
+        if resolved_size is None or image_size is not None:
+            resolved_size = image_size or (image.shape[1], image.shape[0])
+        corners, ids = detect_charuco(image, board)
+        if corners is None or len(corners) < 4:
+            rejected.append((img_path, "not_enough_charuco_corners"))
+            continue
+        all_corners.append(corners)
+        all_ids.append(ids)
+        used.append(img_path)
+
+    if resolved_size is None:
+        raise ValueError("no readable images supplied for calibration")
+    if len(used) < 3:
+        raise ValueError(
+            f"charuco needs >= 3 views, only {len(used)} detected "
+            f"(rejected={len(rejected)})")
+
+    # Build object points once (charuco chess corners are a fixed grid) and
+    # calibrate with plain calibrateCamera. Works on every OpenCV that supports
+    # CharucoBoard.getChessboardCorners (>= 4.7).
+    #
+    # Two id conventions exist: classic API returns the *marker id* per corner
+    # (-> lookup in the marker-id array), while the newer API returns the
+    # *index* of the chess corner in the board grid (-> direct indexing).
+    board_corners = np.asarray(board.getChessboardCorners(), np.float32)
+    if hasattr(board, "getChessboardIds"):
+        board_ids = np.asarray(board.getChessboardIds()).reshape(-1)
+        lookup = {int(bid): board_corners[idx] for idx, bid in enumerate(board_ids)}
+        resolve = lambda ids: np.asarray(
+            [lookup[int(i)] for i in np.asarray(ids).flatten()], np.float32)
+    else:
+        resolve = lambda ids: np.take(
+            board_corners, np.asarray(ids, np.int32).flatten(), axis=0)
+    obj_list: list[np.ndarray] = []
+    img_list: list[np.ndarray] = []
+    for corners, ids in zip(all_corners, all_ids):
+        obj_list.append(resolve(ids).reshape(-1, 3))
+        img_list.append(corners.reshape(-1, 2))
+
+    flags = 0
+    rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
+        obj_list, img_list, resolved_size, None, None, flags=flags)
+
+    intrinsics = Intrinsics(
+        fx=float(K[0, 0]), fy=float(K[1, 1]), cx=float(K[0, 2]), cy=float(K[1, 2]),
+        width=resolved_size[0], height=resolved_size[1],
+        distortion=tuple(float(d) for d in np.asarray(dist).ravel()),
+        source="charuco", reprojection_error_px=float(rms),
+        calibrated_on=__import__("time").strftime("%Y-%m-%d"),
+    ).validate()
+
+    # Per-view RMS: reproject each view's charuco object points (already
+    # matched above via the board corner lookup) with the fitted pose.
+    per_view: list[tuple[Path, float, int]] = []
+    for path, obj, corners, rvec, tvec in zip(used, obj_list, all_corners, rvecs, tvecs):
+        projected, _ = cv2.projectPoints(obj, rvec, tvec, K, dist)
+        sq_err = np.sum((projected.reshape(-1, 2) - corners.reshape(-1, 2)) ** 2, axis=1)
+        per_view.append((path, float(np.sqrt(float(np.mean(sq_err)))), len(corners)))
+
+    log.info("charuco calibration: rms=%.3f px across %d views",
+             float(rms), len(used))
+    return CalibrationResult(
+        intrinsics=intrinsics, rms_px=float(rms),
+        used_images=used, rejected_images=rejected, per_view_rms_px=per_view,
+        method="charuco")
