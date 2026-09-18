@@ -21,6 +21,7 @@ paths:
   models_depth: "models/depth"
   models_segmentation: "models/segmentation"
   outputs: "outputs"
+  reports: "outputs/reports"       # per-step reports / audit artefacts
 
 # --- STEP 2/3: video preprocessing + keyframe selection ---
 video:
@@ -43,10 +44,16 @@ video:
 
 # --- STEP 4: camera calibration ---
 calibration:
-  source: "provided"         # provided | checkerboard | charuco
-  file: "calibration/camera.yaml"
+  source: "provided"          # provided | checkerboard | charuco
+  file: "calibration/camera.yaml"      # canonical output model
+  provided_file: "calibration/camera_provided.yaml"  # used when source=provided
+  images_dir: "calibration/images"     # used when source=checkerboard|charuco
+  # checkerboard: (cols, rows) = OpenCV inner-corner count per row/column
+  # (classic 9x6 board -> cols: 9, rows: 6). square_size_m is one square edge.
   checkerboard: { rows: 6, cols: 9, square_size_m: 0.025 }
   charuco: { rows: 5, cols: 7, square_size_m: 0.04, marker_size_m: 0.02 }
+  validation:
+    max_reprojection_error_px: 1.0    # RMS above this => flagged "CHECK" in report
 
 # --- STEP 5: SfM / pose estimation ---
 sfm:
