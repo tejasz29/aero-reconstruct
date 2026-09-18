@@ -125,3 +125,54 @@ def load_intrinsics(path: str | Path) -> Intrinsics:
     log.info("loaded camera model from %s (source=%s, rms=%.3f px)",
              path, intrinsics.source, intrinsics.reprojection_error_px or 0.0)
     return intrinsics
+
+
+def project(points3d: np.ndarray, intrinsics: Intrinsics) -> np.ndarray:
+    """Project camera-frame 3D points (Nx3) to pixels with distortion (Nx2)."""
+    intrinsics.validate()
+    pts = np.asarray(points3d, dtype=np.float64).reshape(-1, 3)
+    if pts.shape[0] == 0:
+        return np.zeros((0, 2))
+    dist = np.asarray(intrinsics.distortion, dtype=np.float64)
+    projected, _ = cv2.projectPoints(pts, np.zeros(3), np.zeros(3),
+                                     intrinsics.camera_matrix(), dist)
+    return projected.reshape(-1, 2)
+
+
+def unproject_pixel(u: float, v: float, z: float, intrinsics: Intrinsics,
+                    distortion: bool = False) -> np.ndarray:
+    """Camera-frame 3D point for one pixel.
+
+    Pinhole inverse of projection: ``x=(u-cx)*z/fx, y=(v-cy)*z/fy``.
+    Use on *undistorted* coordinates unless ``distortion`` is requested,
+    in which case the image point is distorted back first via the lens model.
+    """
+    intrinsics.validate()
+    if z <= 0:
+        raise ValueError(f"depth must be > 0 for unprojection, got {z}")
+    u, v = float(u), float(v)
+    if distortion:
+        src = np.asarray([[u, v]], dtype=np.float64)
+        dist = np.asarray(intrinsics.distortion, dtype=np.float64)
+        undistorted, _ = cv2.undistortPoints(
+            src, intrinsics.camera_matrix(), dist, None, intrinsics.camera_matrix())
+        u, v = undistorted[0][0], undistorted[0][1]
+    return np.array([(u - intrinsics.cx) * z / intrinsics.fx,
+                     (v - intrinsics.cy) * z / intrinsics.fy, float(z)])
+
+
+def undistort_image(image: np.ndarray, intrinsics: Intrinsics) -> np.ndarray:
+    """Remove lens distortion from an image (same size: fixed-K remap)."""
+    intrinsics.validate()
+    return cv2.undistort(image, intrinsics.camera_matrix(),
+                         np.asarray(intrinsics.distortion, dtype=np.float64))
+
+
+def make_intrinsics(fx: float, fy: float, cx: float, cy: float,
+                    width: int, height: int,
+                    distortion: tuple[float, ...] = (0.0,) * DISTORTION_SIZE,
+                    source: str = "unknown") -> Intrinsics:
+    """Convenience factory (used by tests and custom rigs)."""
+    return Intrinsics(fx=fx, fy=fy, cx=cx, cy=cy, width=width, height=height,
+                      distortion=distortion, source=source,
+                      calibrated_on=time.strftime("%Y-%m-%d")).validate()
