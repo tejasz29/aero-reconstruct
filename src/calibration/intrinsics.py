@@ -100,3 +100,28 @@ class Intrinsics:
             reprojection_error_px=cam.get("reprojection_error_px"),
             calibrated_on=cam.get("calibrated_on"),
         )
+
+
+def save_intrinsics(intrinsics: Intrinsics, path: str | Path) -> Path:
+    """Write ``camera.yaml``-compatible YAML and return the path."""
+    intrinsics.validate()
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        yaml.safe_dump({"camera": intrinsics.to_dict()}, fh, sort_keys=False)
+    log.info("saved camera model -> %s (rms=%.3f px)", path,
+             intrinsics.reprojection_error_px or 0.0)
+    return path
+
+
+def load_intrinsics(path: str | Path) -> Intrinsics:
+    """Load and validate intrinsics from a ``camera.yaml`` file."""
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"camera model not found: {path}")
+    with open(path, "r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    intrinsics = Intrinsics.from_dict(data).validate()
+    log.info("loaded camera model from %s (source=%s, rms=%.3f px)",
+             path, intrinsics.source, intrinsics.reprojection_error_px or 0.0)
+    return intrinsics
