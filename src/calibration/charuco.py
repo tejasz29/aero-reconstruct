@@ -52,3 +52,37 @@ def generate_charuco_view(board, width: int, height: int) -> np.ndarray:
         board.generateImage((width, height), img, marginSize=0, borderBits=1)
         return img
     return board.draw((width, height))
+
+
+def _charuco_detector(board, camera_matrix=None, dist_coeffs=None):
+    """Build a ``CharucoDetector`` (modern) or legacy detector+interpolate pair."""
+    if hasattr(cv2.aruco, "CharucoDetector"):
+        params = cv2.aruco.CharucoParameters()
+        params.tryRefineMarkers = True
+        if camera_matrix is not None and dist_coeffs is not None:
+            params.cameraMatrix = camera_matrix
+            params.distCoeffs = dist_coeffs
+        return cv2.aruco.CharucoDetector(board, params)
+    return None
+
+
+def detect_charuco(image: np.ndarray, board, camera_matrix=None,
+                   dist_coeffs=None):
+    """Return (charuco_corners, charuco_ids) or (None, None)."""
+    detector = _charuco_detector(board, camera_matrix, dist_coeffs)
+    if detector is not None:
+        res = detector.detectBoard(image)
+        corners, ids = res[0], res[1]
+        if corners is None or len(corners) == 0:
+            return None, None
+        return corners, np.asarray(ids, np.int32).reshape(-1, 1)
+    params = cv2.aruco.DetectorParameters()
+    marker_corners, marker_ids, _ = cv2.aruco.detectMarkers(
+        image, aruco_dictionary(), parameters=params)
+    kwargs = {"cameraMatrix": camera_matrix, "distCoeffs": dist_coeffs} \
+        if camera_matrix is not None and dist_coeffs is not None else {}
+    corners, ids, _ = cv2.aruco.interpolateCornersCharuco(
+        marker_corners, image, board, **kwargs)
+    if corners is None or len(corners) == 0:
+        return None, None
+    return corners, np.asarray(ids, np.int32).reshape(-1, 1)
