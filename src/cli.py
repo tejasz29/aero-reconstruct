@@ -19,6 +19,8 @@ or, after ``pip install -e .``::
   frames + timestamps.csv.
 * ``select-keyframes`` — STEP 3: score frames, drop bad/duplicate ones,
   write frame_scores.csv + keyframes.csv.
+* ``calibrate`` — STEP 4: camera calibration (provided | checkerboard |
+  charuco) -> validated calibration/camera.yaml + report.
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """
@@ -33,6 +35,7 @@ import sys
 from src.common.config_loader import get, load_config
 from src.common.logging_utils import get_logger, setup_logging
 from src.common.paths import PROJECT_ROOT, project_paths
+from src.calibration.runner import resolve_calibration
 from src.video.frame_extractor import extract_frames
 from src.video.keyframes import run_selection
 
@@ -167,6 +170,39 @@ def cmd_select_keyframes(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    """STEP 4 — camera calibration (provided | checkerboard | charuco)."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    images_dir = None
+    if args.images_dir:
+        images_dir = Path(args.images_dir)
+        if not images_dir.is_absolute():
+            images_dir = PROJECT_ROOT / images_dir
+
+    result, intrinsics = resolve_calibration(cfg, images_dir=images_dir,
+                                             output_path=args.output)
+    print(f"source : {intrinsics.source}")
+    print(f"model  : fx={intrinsics.fx:.2f} fy={intrinsics.fy:.2f} "
+          f"cx={intrinsics.cx:.2f} cy={intrinsics.cy:.2f} "
+          f"({intrinsics.width}x{intrinsics.height})")
+    print(f"dist   : [{', '.join(f'{d:.5f}' for d in intrinsics.distortion)}]")
+    if result is not None:
+        threshold = float(get(cfg, "calibration.validation.max_reprojection_error_px", 1.0))
+        verdict = "PASS" if result.rms_px <= threshold else "CHECK"
+        print(f"views  : {len(result.used_images)} used, "
+              f"{len(result.rejected_images)} rejected")
+        print(f"rms    : {result.rms_px:.3f} px (threshold {threshold:.1f} -> {verdict})")
+        if result.rejected_images:
+            print("rejected:" + ", ".join(f" {p.name} ({why})"
+                                          for p, why in result.rejected_images[:5]))
+    print(f"output : {args.output or get(cfg, 'calibration.file', 'calibration/camera.yaml')}")
+    print(f"report : outputs/reports/calibration_report.json "
+          f"(+ annotated views in outputs/reports/calibration/)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sp3d",
@@ -193,6 +229,14 @@ def build_parser() -> argparse.ArgumentParser:
     sk.add_argument("--frames-dir", default=None,
                     help="frames dir with timestamps.csv (default: from config).")
     sk.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
+
+    cl = sub.add_parser("calibrate",
+                        help="STEP 4: camera calibration (provided|checkerboard|charuco).")
+    cl.add_argument("--images-dir", default=None,
+                    help="calibration photos dir (default: calibration.images_dir).")
+    cl.add_argument("--output", default=None,
+                    help="output camera model path (default: calibration.file).")
+    cl.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
@@ -201,7 +245,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handlers = {"version": cmd_version, "doctor": cmd_doctor, "init": cmd_init,
                 "extract-frames": cmd_extract_frames,
-                "select-keyframes": cmd_select_keyframes}
+                "select-keyframes": cmd_select_keyframes,
+                "calibrate": cmd_calibrate}
     return handlers[args.command](args)
 
 
