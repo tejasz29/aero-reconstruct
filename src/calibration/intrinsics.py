@@ -52,3 +52,19 @@ class Intrinsics:
         return np.array([[self.fx, 0.0, self.cx],
                          [0.0, self.fy, self.cy],
                          [0.0, 0.0, 1.0]])
+
+    def validate(self) -> "Intrinsics":
+        """Sanity-check physical plausibility; raises ValueError when broken."""
+        if not (np.isfinite(self.fx) and self.fx > MIN_FOCAL_PX):
+            raise ValueError(f"fx must be > {MIN_FOCAL_PX}, got {self.fx}")
+        if not (np.isfinite(self.fy) and self.fy > MIN_FOCAL_PX):
+            raise ValueError(f"fy must be > {MIN_FOCAL_PX}, got {self.fy}")
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError(f"image size must be positive, got {(self.width, self.height)}")
+        if not all(np.isfinite(d) for d in self.distortion):
+            raise ValueError("distortion coefficients must be finite")
+        if len(self.distortion) != DISTORTION_SIZE:
+            raise ValueError(
+                f"distortion must have {DISTORTION_SIZE} coeffs "
+                f"(k1,k2,p1,p2,k3), got {len(self.distortion)}")
+        return self
