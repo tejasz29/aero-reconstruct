@@ -198,8 +198,9 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
             print("rejected:" + ", ".join(f" {p.name} ({why})"
                                           for p, why in result.rejected_images[:5]))
     print(f"output : {args.output or get(cfg, 'calibration.file', 'calibration/camera.yaml')}")
-    print(f"report : outputs/reports/calibration_report.json "
-          f"(+ annotated views in outputs/reports/calibration/)")
+    report_dir = Path(get(cfg, "paths.reports", "outputs/reports"))
+    print(f"report : {report_dir / 'calibration_report.json'} "
+          f"(+ annotated views in {report_dir / 'calibration/'})")
     return 0
 
 
