@@ -31,3 +31,12 @@ class CalibrationResult:
     per_view_rms_px: list[tuple[Path, float, int]] = field(default_factory=list)
     method: str = "checkerboard"
     pattern_size: tuple[int, int] | None = None
+
+
+def checkerboard_object_points(pattern_size: tuple[int, int],
+                               square_size_m: float) -> np.ndarray:
+    """Object points for one view: z=0 grid, ordered col-major like OpenCV."""
+    cols, rows = pattern_size
+    objp = np.zeros((cols * rows, 3), np.float32)
+    objp[:, :2] = np.mgrid[0:cols, 0:rows].T.reshape(-1, 2) * float(square_size_m)
+    return objp
