@@ -67,8 +67,33 @@ def resolve_calibration(
                          f"(provided | checkerboard | charuco)")
 
     if source != "provided":
-        raise NotImplementedError(
-            f"calibration.source={source!r} arrives in a later commit")
+        if images_dir is None:
+            images_dir = Path(get(cfg, "calibration.images_dir", "calibration/images"))
+            if not Path(images_dir).is_absolute():
+                images_dir = root / Path(images_dir)
+        images = sorted(p for p in Path(images_dir).iterdir()
+                        if p.suffix.lower() in IMAGE_EXTS)
+        if not images:
+            raise FileNotFoundError(
+                f"no calibration images ({sorted(IMAGE_EXTS)}) in {images_dir} — "
+                f"add checkerboard/Charuco photos or switch calibration.source=provided")
+
+        if source == "checkerboard":
+            cb = get(cfg, "calibration.checkerboard", {})
+            # Note: (cols, rows) = OpenCV inner-corner count per row/column.
+            pattern = (int(cb.get("cols", 9)), int(cb.get("rows", 6)))
+            result = calibrate_checkerboard(
+                images, pattern, float(cb.get("square_size_m", 0.025)))
+        elif source == "charuco":
+            ch = get(cfg, "calibration.charuco", {})
+            result = calibrate_charuco(
+                images,
+                rows=int(ch.get("rows", 5)),
+                cols=int(ch.get("cols", 7)),
+                square_length_m=float(ch.get("square_size_m", 0.04)),
+                marker_length_m=float(ch.get("marker_size_m", 0.02)))
+        out = _write_outputs(cfg, root, result.intrinsics, result, output_path)
+        return result, out
 
     provided = Path(get(cfg, "calibration.provided_file",
                         "calibration/camera_provided.yaml"))
