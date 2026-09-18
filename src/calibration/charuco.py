@@ -43,3 +43,12 @@ def charuco_board(rows: int, cols: int, square_length_m: float,
                                       marker_length_m, aruco_dictionary())
     return cv2.aruco.CharucoBoard_create(cols, rows, square_length_m,
                                          marker_length_m, aruco_dictionary())
+
+
+def generate_charuco_view(board, width: int, height: int) -> np.ndarray:
+    """Render a full board image (for tests / demo boards)."""
+    if hasattr(board, "generateImage"):
+        img = np.zeros((height, width), np.uint8)
+        board.generateImage((width, height), img, marginSize=0, borderBits=1)
+        return img
+    return board.draw((width, height))
