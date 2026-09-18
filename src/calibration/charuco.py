@@ -149,9 +149,13 @@ def calibrate_charuco(
         obj_list.append(resolve(ids).reshape(-1, 3))
         img_list.append(corners.reshape(-1, 2))
 
-    flags = 0
-    rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
-        obj_list, img_list, resolved_size, None, None, flags=flags)
+    if hasattr(cv2.aruco, "calibrateCameraCharuco"):
+        rms, K, dist, rvecs, tvecs = cv2.aruco.calibrateCameraCharuco(
+            all_corners, all_ids, board, resolved_size, None, None)
+    else:
+        flags = 0
+        rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
+            obj_list, img_list, resolved_size, None, None, flags=flags)
 
     intrinsics = Intrinsics(
         fx=float(K[0, 0]), fy=float(K[1, 1]), cx=float(K[0, 2]), cy=float(K[1, 2]),
