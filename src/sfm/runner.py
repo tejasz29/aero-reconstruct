@@ -99,3 +99,12 @@ def _resolve_backend(cfg: dict) -> str:
             log.info("COLMAP found on PATH; the bundled OpenCV tracker is "
                      "used by this MVP (a native COLMAP driver lands later).")
     return "opencv"
+
+
+def _read_keyframes(path: Path) -> list[dict]:
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"keyframes not found: {path} — run select-keyframes first")
+    with open(path, newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    return sorted(rows, key=lambda r: float(r["timestamp_s"]))
