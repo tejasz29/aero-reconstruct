@@ -21,6 +21,7 @@ COLMAP driver lands in a later step).
 from __future__ import annotations
 
 import csv
+import json
 import shutil
 from collections import Counter
 from dataclasses import dataclass, field
@@ -33,7 +34,12 @@ from src.calibration.intrinsics import Intrinsics, load_intrinsics
 from src.common.config_loader import get
 from src.common.logging_utils import get_logger
 from src.common.paths import PROJECT_ROOT
-from src.sfm.pose import CameraPose
+from src.sfm.features import extract_features, match_features
+from src.sfm.pose import (
+    CameraPose,
+    chain_pose,
+    estimate_relative_pose,
+)
 
 log = get_logger("sp3d.sfm")
 
@@ -133,3 +139,129 @@ def _write_poses_csv(path: Path, poses: list[CameraPose]) -> Path:
                 row += [""] * (len(POSES_HEADER) - len(row))
             writer.writerow(row)
     return path
+
+
+def run_reconstruction(
+    cfg: dict,
+    frames_dir: str | Path | None = None,
+    keyframes_file: str | Path | None = None,
+    intrinsics: Intrinsics | str | Path | None = None,
+    output_dir: str | Path | None = None,
+    max_reproj_override: float | None = None,
+) -> TrajectoryResult:
+    """Run STEP 5: track keyframes into camera_poses.csv + report JSON."""
+    frames_dir = Path(frames_dir) if frames_dir else Path(
+        get(cfg, "paths.frames", "data/frames"))
+    if not frames_dir.is_absolute():
+        frames_dir = PROJECT_ROOT / frames_dir
+    kf_path = Path(keyframes_file) if keyframes_file else frames_dir / "keyframes.csv"
+    out_dir = Path(output_dir) if output_dir else Path(
+        get(cfg, "paths.trajectory", "outputs/trajectory"))
+    if not out_dir.is_absolute():
+        out_dir = PROJECT_ROOT / out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    poses_path = out_dir / "camera_poses.csv"
+
+    report_dir = Path(get(cfg, "paths.reports", "outputs/reports"))
+    if not report_dir.is_absolute():
+        report_dir = PROJECT_ROOT / report_dir
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "trajectory_report.json"
+
+    cam = _resolve_intrinsics(intrinsics, cfg)
+    backend = _resolve_backend(cfg)
+    rows = _read_keyframes(kf_path)
+
+    feature = str(get(cfg, "sfm.feature", "sift"))
+    max_features = int(get(cfg, "sfm.max_features", 8000))
+    ratio = float(get(cfg, "sfm.matcher_ratio_test", 0.8))
+    threshold = float(get(cfg, "sfm.ransac_reproj_threshold_px", 4.0))
+    min_inliers = int(get(cfg, "sfm.min_inliers", 20))
+    max_reproj = (max_reproj_override if max_reproj_override is not None
+                  else float(get(cfg, "sfm.max_reprojection_error_px", 2.0)))
+    min_parallax = float(get(cfg, "sfm.min_parallax_px", 3.0))
+
+    K = cam.camera_matrix()
+    dist = cam.distortion
+    poses: list[CameraPose] = []
+    anchor: dict | None = None  # last accepted frame's {features, pose, row}
+    n_reference = 0
+
+    for row in rows:
+        frame_id = int(row["frame_id"])
+        source_index = int(row.get("source_index") or 0)
+        timestamp_s = float(row["timestamp_s"])
+        filename = row["filename"]
+        image = cv2.imread(str(frames_dir / filename), cv2.IMREAD_GRAYSCALE)
+        if image is not None and np.any(np.asarray(dist, dtype=np.float64)):
+            image = cv2.undistort(image, K, np.asarray(dist, dtype=np.float64))
+
+        kp, des = extract_features(image, feature=feature,
+                                   max_features=max_features) if image is not None \
+            else ([], None)
+        if des is None or len(kp) < min_inliers:
+            poses.append(CameraPose(frame_id, source_index, timestamp_s, filename,
+                                    False, reject_reason="no_features"))
+            continue
+
+        if anchor is None:
+            pose = CameraPose(frame_id, source_index, timestamp_s, filename,
+                              True, R_wc=np.eye(3), C=np.zeros(3),
+                              inliers=len(kp))
+            anchor = {"kp": kp, "des": des, "pose": pose, "row": row}
+            poses.append(pose)
+            n_reference += 1
+            continue
+
+        matches = match_features(anchor["des"], des, ratio,
+                                 hamming=(feature == "orb"))
+        if len(matches) < min_inliers:
+            poses.append(CameraPose(frame_id, source_index, timestamp_s, filename,
+                                    False, reject_reason="match_failure"))
+            continue
+        p1 = np.asarray([anchor["kp"][i].pt for i in matches[:, 0]])
+        p2 = np.asarray([kp[i].pt for i in matches[:, 1]])
+        rel = estimate_relative_pose(
+            p1, p2, K, dist,
+            ransac_threshold_px=threshold,
+            min_inliers=min_inliers,
+            max_reprojection_error_px=max_reproj,
+            min_parallax_px=min_parallax,
+            transl_prior=anchor.get("t_dir"))
+        if not rel.valid:
+            poses.append(CameraPose(frame_id, source_index, timestamp_s, filename,
+                                    False, inliers=rel.inlier_count,
+                                    reject_reason=rel.reject_reason))
+            continue
+        R_wc, C = chain_pose(anchor["pose"].R_wc, anchor["pose"].C, rel)
+        pose = CameraPose(frame_id, source_index, timestamp_s, filename, True,
+                          R_wc=R_wc, C=C, inliers=rel.inlier_count,
+                          mean_reproj_error_px=rel.mean_reproj_error_px,
+                          median_parallax_px=rel.median_parallax_px)
+        anchor = {"kp": kp, "des": des, "pose": pose, "row": row,
+                  "t_dir": rel.t / np.linalg.norm(rel.t)}
+        poses.append(pose)
+
+    _write_poses_csv(poses_path, poses)
+    result = TrajectoryResult(frames_dir=frames_dir, keyframes_path=kf_path,
+                              poses_path=poses_path, report_path=report_path,
+                              backend=backend, poses=poses)
+
+    mean_error = result.mean_reproj_error_px
+    report = {
+        "backend": backend,
+        "keyframes": len(poses),
+        "accepted": len(result.kept),
+        "rejected": len(result.rejected),
+        "reject_reasons": result.rejected_counts,
+        "mean_reproj_error_px": (round(mean_error, 4) if mean_error is not None else None),
+        "within_threshold": (mean_error is not None and mean_error <= max_reproj),
+        "intrinsics_source": cam.source,
+        "scale_units": "relative (unknown global scale — resolved in STEP 8)",
+        "poses_csv": str(poses_path),
+    }
+    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    log.info("trajectory: %d keyframes -> %d accepted / %d rejected (mean "
+             "reproj %.3f px, backend=%s)", len(poses), len(result.kept),
+             len(result.rejected), mean_error or 0.0, backend)
+    return result
