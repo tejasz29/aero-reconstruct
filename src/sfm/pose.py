@@ -170,3 +170,101 @@ def _refine_pose(R: np.ndarray, t: np.ndarray, X1: np.ndarray,
             lam *= 10.0
     R_ref, t_ref = unpack(theta)
     return R_ref, t_ref
+
+
+def estimate_relative_pose(
+    points1: np.ndarray,
+    points2: np.ndarray,
+    K: np.ndarray,
+    distortion: tuple[float, ...] = (0.0,) * 5,
+    ransac_threshold_px: float = 4.0,
+    ransac_prob: float = 0.999,
+    ransac_max_iter: int = 2000,
+    min_inliers: int = 20,
+    max_reprojection_error_px: float = 2.0,
+    min_parallax_px: float = 3.0,
+    transl_prior: np.ndarray | None = None,
+) -> RelativePose:
+    """Robustly estimate relative pose from two view's point correspondences.
+
+    Feature points enter as raw (distorted) pixels; distortion is removed
+    before the algebraic estimation. Among the RANSAC inliers, the
+    triangulated scene must lie in front of both cameras with low
+    reprojection error and usable parallax for the pose to be ``valid``.
+
+    Small baselines make the *sign* of translation ambiguous even when
+    cheirality holds; ``transl_prior`` (the unit direction of the previous
+    accepted baseline) is used to flip ``t`` toward a temporally consistent
+    direction when it produces an equally valid triangulation. Never
+    raises; failures are described by ``reject_reason``.
+    """
+    result = RelativePose()
+    p1 = np.asarray(points1, dtype=np.float64).reshape(-1, 2)
+    p2 = np.asarray(points2, dtype=np.float64).reshape(-1, 2)
+    if len(p1) < min_inliers or len(p1) != len(p2):
+        result.reject_reason = "low_inliers"
+        return result
+    r1 = _undistort_points(p1, K, distortion)
+    r2 = _undistort_points(p2, K, distortion)
+
+    E, mask = cv2.findEssentialMat(r1, r2, K,
+                                   method=cv2.RANSAC, prob=ransac_prob,
+                                   threshold=ransac_threshold_px,
+                                   maxIters=ransac_max_iter)
+    if E is None:
+        result.reject_reason = "failure"
+        return result
+    if mask is None:
+        mask = np.ones(len(r1), dtype=np.uint8)
+    mask = mask.ravel().astype(bool)
+    result.inlier_count = int(mask.sum())
+    if result.inlier_count < min_inliers:
+        result.reject_reason = "low_inliers"
+        return result
+
+    _ok, R, t, _cheirality = cv2.recoverPose(E, r1[mask], r2[mask], K)
+    t = t.ravel()
+
+    candidates = [(R, t)]
+    if (transl_prior is not None
+            and float(t @ np.asarray(transl_prior, dtype=np.float64)) < 0):
+        candidates.append((R, -t))
+    best_R, best_t, best_score = None, None, None
+    for R_c, t_c in candidates:
+        score = _validate_pair(r1[mask], r2[mask], K, R_c, t_c, min_inliers)
+        if score is None:
+            continue
+        if best_score is None or score[0] > best_score[0]:
+            best_R, best_t, best_score = R_c, t_c, score
+        elif (score[0] == best_score[0] and transl_prior is not None
+              and float(t_c @ transl_prior) > float(best_t @ transl_prior)):
+            best_R, best_t, best_score = R_c, t_c, score
+    if best_score is None:
+        result.reject_reason = "degenerate"
+        return result
+    R, t, (inlier_count, X1, i1, i2, _mean_error, _parallax) = (
+        best_R, best_t, best_score)
+
+    if inlier_count >= 8:
+        R_ref, t_ref = _refine_pose(R, t, X1, i1, i2, K)
+        refined = _validate_pair(i1, i2, K, R_ref, t_ref, min_inliers)
+        if refined is not None and refined[4] < _mean_error:
+            R, t = R_ref, t_ref
+            inlier_count, X1, i1, i2, mean_error, parallax = refined
+        else:
+            mean_error, parallax = _mean_error, _parallax
+    else:
+        mean_error, parallax = _mean_error, _parallax
+
+    result.R, result.t = R, t
+    result.inlier_count = inlier_count
+    result.mean_reproj_error_px = mean_error
+    result.median_parallax_px = parallax
+    if mean_error > max_reprojection_error_px:
+        result.reject_reason = "high_reprojection"
+    elif parallax < min_parallax_px:
+        result.reject_reason = "low_parallax"
+    else:
+        result.reject_reason = ""
+        result.valid = True
+    return result
