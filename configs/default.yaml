@@ -22,6 +22,7 @@ paths:
   models_segmentation: "models/segmentation"
   outputs: "outputs"
   reports: "outputs/reports"       # per-step reports / audit artefacts
+  trajectory: "outputs/trajectory" # STEP 5 camera poses
 
 # --- STEP 2/3: video preprocessing + keyframe selection ---
 video:
@@ -54,15 +55,6 @@ calibration:
   charuco: { rows: 5, cols: 7, square_size_m: 0.04, marker_size_m: 0.02 }
   validation:
     max_reprojection_error_px: 1.0    # RMS above this => flagged "CHECK" in report
-
-# --- STEP 5: SfM / pose estimation ---
-sfm:
-  backend: "colmap"          # colmap baseline; opencv utilities in src/sfm
-  feature: "sift"            # sift | orb
-  max_features: 8000
-  matcher_ratio_test: 0.8
-  ransac_reproj_threshold_px: 4.0
-  max_reprojection_error_px: 2.0   # poses worse than this are rejected
 
 # --- STEP 7: GPS metric conversion ---
 gps:
