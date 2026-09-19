@@ -27,3 +27,22 @@ def test_doctor_fails_on_broken_layout(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(paths_mod, "PROJECT_ROOT", tmp_path)
     assert cli.main(["doctor"]) == 1
     assert "MISSING" in capsys.readouterr().out
+
+
+def test_build_parser_lists_all_stage_subcommands():
+    help_text = cli.build_parser().format_help()
+    for subcommand in ("extract-frames", "select-keyframes", "calibrate",
+                       "reconstruct-poses"):
+        assert subcommand in help_text
+
+
+def test_reconstruct_poses_parser_exposes_expected_flags():
+    parser = cli.build_parser()
+    argv = ["reconstruct-poses", "--frames-dir", "frames",
+            "--keyframes-file", "kf.csv", "--camera", "cam.yaml",
+            "--output-dir", "out"]
+    args = parser.parse_args(argv)
+    assert args.frames_dir == "frames"
+    assert args.keyframes_file == "kf.csv"
+    assert args.camera == "cam.yaml"
+    assert args.output_dir == "out"
