@@ -110,3 +110,63 @@ def _validate_pair(r1i: np.ndarray, r2i: np.ndarray, K: np.ndarray,
         + np.linalg.norm(p2_rows.T - i2, axis=1)
     parallax = float(np.median(np.linalg.norm(i2 - i1, axis=1)))
     return int(len(X1)), X1, i1, i2, float(np.mean(errors)), parallax
+
+
+def _refine_pose(R: np.ndarray, t: np.ndarray, X1: np.ndarray,
+                 i1: np.ndarray, i2: np.ndarray, K: np.ndarray,
+                 iterations: int = 8) -> tuple[np.ndarray, np.ndarray]:
+    """Gauss-Newton refine (R, t) on fixed triangulated points (5 dof).
+
+    Free parameters are the 3 Rodrigues angles plus the direction of ``t``
+    (azimuth/elevation) — the essential matrix fixes translation only up to
+    scale, and refining the direction keeps chaining scale-consistent.
+    Residuals = per-point reprojection error in both views; the Jacobian is
+    numeric (central differences). Returns the refined unit-translation pose.
+    """
+    t0 = t / (np.linalg.norm(t) + 1e-12)
+    theta0 = np.r_[cv2.Rodrigues(R)[0].ravel(),
+                   np.arctan2(t0[1], t0[0]),
+                   np.arccos(np.clip(t0[2], -1.0, 1.0))]
+    p1_fixed = K @ X1.T
+    p1_fixed = (p1_fixed[:2] / p1_fixed[2]).T
+
+    def unpack(theta):
+        rvec, az, el = theta[:3], theta[3], theta[4]
+        R_c, _ = cv2.Rodrigues(rvec)
+        t_c = np.array([np.sin(el) * np.cos(az),
+                        np.sin(el) * np.sin(az), np.cos(el)])
+        return R_c, t_c
+
+    def residual(theta):
+        R_c, t_c = unpack(theta)
+        p2 = K @ (X1 @ R_c.T + t_c).T
+        p2 = (p2[:2] / p2[2]).T
+        return np.concatenate([(p1_fixed - i1).ravel(), (p2 - i2).ravel()])
+
+    theta = theta0.copy()
+    r0 = residual(theta)
+    cost = float(r0 @ r0)
+    lam = 1e-3
+    for _ in range(iterations):
+        jac = np.zeros((len(r0), 5))
+        for j in range(5):
+            step = max(1e-6, 1e-4 * abs(theta[j]))
+            tp, tm = theta.copy(), theta.copy()
+            tp[j] += step
+            tm[j] -= step
+            jac[:, j] = (residual(tp) - residual(tm)) / (2.0 * step)
+        normal = jac.T @ jac + lam * np.eye(5)
+        try:
+            delta = np.linalg.solve(normal, -(jac.T @ r0))
+        except np.linalg.LinAlgError:
+            break
+        candidate = theta + delta
+        rc = residual(candidate)
+        new_cost = float(rc @ rc)
+        if new_cost < cost:
+            theta, r0, cost = candidate, rc, new_cost
+            lam = max(lam / 3.0, 1e-9)
+        else:
+            lam *= 10.0
+    R_ref, t_ref = unpack(theta)
+    return R_ref, t_ref
