@@ -4,7 +4,7 @@ Source of truth for build order. A step is **done** only when: implemented,
 tested green, demoed on real or synthetic data, README status updated, and
 committed + pushed. Never start the next step on a broken tree.
 
-**Progress: STEPS 1–4 done (32 commits + STEP 4 commit(s)) · STEP 5 next · 53/53 tests passing.**
+**Progress: STEPS 1–5 done (32 commits + STEP 4 + STEP 5 commits) · STEP 6 next · 65/65 tests passing.**
 
 Conventions every step follows: tunables live in `configs/default.yaml`
 (never hard-coded); every stage logs via `src.common.logging_utils`;
@@ -124,15 +124,45 @@ sources incl. unknown-source error).
 
 **Commits:** STEP 4 commits listed after push (see git log).
 
-## STEP 5 — COLMAP / SfM baseline ⬜
+## STEP 5 — SfM baseline (poses) ✅ done
 
-**What:** Camera poses for every keyframe. COLMAP as baseline; custom OpenCV
-utilities (SIFT/ORB, matching, RANSAC, essential matrix, PnP) in parallel.
+**What:** Camera poses for every keyframe. COLMAP kept as the named backend with
+an automatic fallback to a bundled classical OpenCV tracker (`sfm.backend`,
+resolved at runtime; no COLMAP binary needed for the demo).
 **Inputs:** `keyframes.csv` + intrinsics. **Outputs:**
-`outputs/trajectory/camera_poses.csv` (frame ID, timestamp, position,
-rotation) + reprojection errors; reject poses above threshold. **Files:**
-`src/sfm/`, `src/tracking/` · CLI `reconstruct-poses`. **Tests:** essential-matrix
-and PnP recovery on synthetic correspondences.
+`outputs/trajectory/camera_poses.csv` (frame id, timestamp, position, rotation,
+inliers, mean reproj error, median parallax) + `outputs/reports/
+trajectory_report.json`; pose rejected above thresholds with an auditable
+`reject_reason`.
+**Algorithm:** features per frame (SIFT or ORB) → reciprocal-consistent
+matching with Lowe's ratio test → RANSAC essential matrix over undistorted
+pixels → cheirality-validated (triangulated points in front of both cameras)
+hypothesis with 5-dof Gauss-Newton refinement on the consensus → PnP support
+(`estimate_absolute_pose`) → sequential chaining (world = first accepted
+keyframe, anchor stays put on rejection so the run resumes). Reject reasons:
+`no_features`, `match_failure`, `low_inliers`, `degenerate`,
+`high_reprojection`, `low_parallax`.
+**Scale caveat (documented):** monocular motion is recovered up to one global
+scale (essential matrices return unit-norm translation) — resolved to metric
+coordinates by the visual↔GPS similarity alignment in STEP 8. The *sign* of
+translation is ambiguous for near-zero rotation / weak 3D parallax; the chain
+enforces temporal consistency via the previous accepted baseline and the GPS
+alignment decides the absolute handedness.
+**Files:** `src/sfm/{features,pose,runner,__init__}.py` · `src/cli.py` +=
+`reconstruct-poses` · config += `paths.trajectory`, `sfm.backend`,
+`sfm.feature`, `sfm.max_features`, `sfm.matcher_ratio_test`,
+`sfm.ransac_reproj_threshold_px`, `sfm.max_reprojection_error_px`,
+`sfm.min_inliers`, `sfm.min_parallax_px`.
+**Tests:** 65 passed (+12: relative-pose GT recovery, degenerate rejection,
+prior-sign tie-break, PnP recovery + min-points, chain math, rendered-view
+feature/matching, runner e2e on a synthetic 5-view textured pass with 3D
+structure, featureless-frame rejection + resume, CSV schema, colmap→opencv
+fallback, CLI parser).
+**Verify:** `python -m src.cli reconstruct-poses` (config-driven) → check
+`outputs/trajectory/camera_poses.csv` + report; COLMAP requested ⇒ warning +
+OpenCV tracker used.
+
+**Commits:** STEP 5 commits listed after push (see git log).
 
 ## STEP 6 — Trajectory visualisation ⬜
 
