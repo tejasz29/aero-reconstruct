@@ -302,3 +302,21 @@ def test_runner_reconstructs_forward_trajectory(tmp_path):
     assert res.mean_reproj_error_px is not None
     assert res.mean_reproj_error_px < 1.5
     assert res.poses_path.is_file() and res.report_path.is_file()
+
+
+def test_runner_rejects_featureless_and_resumes(tmp_path):
+    R_gt, C_gt, cam_path = _write_scene(tmp_path, n_cams=3, black_frame=1)
+    res = sfm_runner.run_reconstruction(
+        _cfg(tmp_path), frames_dir=tmp_path / "images",
+        keyframes_file=tmp_path / "keyframes.csv", intrinsics=cam_path)
+    rej = res.rejected
+    assert len(rej) == 1 and rej[0].reject_reason == "no_features"
+    assert rej[0].frame_id == 1
+    kept = res.kept
+    assert [p.frame_id for p in kept] == [0, 2]
+    gp2 = min(range(len(C_gt)), key=lambda i: float(np.linalg.norm(
+        np.asarray(C_gt[i]) - np.asarray(kept[-1].C, dtype=np.float64))))
+    assert _rot_angle_deg(kept[-1].R_wc, R_gt[gp2]) < 10.0
+    assert float(np.linalg.norm(np.asarray(kept[-1].C)
+                                - np.asarray(C_gt[gp2]))) < 0.10
+    assert res.poses_path.is_file()
