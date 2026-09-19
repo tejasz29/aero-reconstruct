@@ -56,6 +56,20 @@ calibration:
   validation:
     max_reprojection_error_px: 1.0    # RMS above this => flagged "CHECK" in report
 
+# --- STEP 5: SfM / pose estimation ---
+# Backend "colmap" is the long-term baseline; this MVP ships and runs the
+# bundled classical OpenCV tracker and falls back to it with a warning when
+# the COLMAP binary is not on PATH.
+sfm:
+  backend: "colmap"          # colmap (once installed) | opencv (bundled tracker)
+  feature: "sift"            # sift | orb
+  max_features: 8000
+  matcher_ratio_test: 0.8
+  ransac_reproj_threshold_px: 4.0
+  max_reprojection_error_px: 2.0   # poses worse than this are rejected
+  min_inliers: 20                  # RANSAC inliers needed to accept a pair
+  min_parallax_px: 3.0             # median inlier displacement; below = no baseline
+
 # --- STEP 7: GPS metric conversion ---
 gps:
   input_format: "csv"        # csv with columns: timestamp,latitude,longitude,altitude
