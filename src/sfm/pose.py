@@ -268,3 +268,18 @@ def estimate_relative_pose(
         result.reject_reason = ""
         result.valid = True
     return result
+
+
+def chain_pose(R_wc_prev: np.ndarray, C_prev: np.ndarray,
+               rel: RelativePose) -> tuple[np.ndarray, np.ndarray]:
+    """Compose a chained world pose from a relative motion.
+
+    With world frames ``X_cam = R_wc (X_w - C)`` and the relative map
+    ``X2 = R_rel @ X1 + t_rel`` (camera-1 -> camera-2 coordinates), the
+    world->camera rotation chains as ``R_wc_i = R_rel @ R_wc_{i-1}`` and the
+    camera centre as ``C_i = C_{i-1} - (R_rel @ R_wc_{i-1}).T @ t_rel``.
+    """
+    R_wc = rel.R @ np.asarray(R_wc_prev, dtype=np.float64)
+    C = (np.asarray(C_prev, dtype=np.float64)
+         - (rel.R @ np.asarray(R_wc_prev, dtype=np.float64)).T @ rel.t)
+    return R_wc, C
