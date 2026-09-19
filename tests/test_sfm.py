@@ -350,3 +350,13 @@ def test_trajectory_report_json(tmp_path):
     assert report["backend"] in ("colmap", "opencv")
     assert report["within_threshold"] is True
     assert report["scale_units"].startswith("relative")
+
+
+def test_backend_falls_back_when_colmap_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(sfm_runner.shutil, "which", lambda _: None)
+    R_gt, C_gt, cam_path = _write_scene(tmp_path, n_cams=2)
+    res = sfm_runner.run_reconstruction(
+        _cfg(tmp_path), frames_dir=tmp_path / "images",
+        keyframes_file=tmp_path / "keyframes.csv", intrinsics=cam_path)
+    assert res.backend == "opencv"
+    assert res.mean_reproj_error_px is not None
