@@ -38,6 +38,7 @@ from src.common.config_loader import get, load_config
 from src.common.logging_utils import get_logger, setup_logging
 from src.common.paths import PROJECT_ROOT, project_paths
 from src.calibration.runner import resolve_calibration
+from src.sfm.runner import run_reconstruction
 from src.video.frame_extractor import extract_frames
 from src.video.keyframes import run_selection
 
@@ -206,6 +207,35 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reconstruct_poses(args: argparse.Namespace) -> int:
+    """STEP 5 — track keyframes into camera_poses.csv + report."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    frames_dir = Path(args.frames_dir) if args.frames_dir else Path(
+        get(cfg, "paths.frames", "data/frames"))
+    if not frames_dir.is_absolute():
+        frames_dir = PROJECT_ROOT / frames_dir
+    keyframes_file = Path(args.keyframes_file) if args.keyframes_file else None
+    output_dir = Path(args.output_dir) if args.output_dir else None
+
+    result = run_reconstruction(
+        cfg, frames_dir=frames_dir, keyframes_file=keyframes_file,
+        intrinsics=args.camera, output_dir=output_dir)
+    mean = result.mean_reproj_error_px
+    print(f"backend : {result.backend}")
+    print(f"keyframes: {len(result.poses)} tracked "
+          f"(accepted={len(result.kept)}, rejected={len(result.rejected)})")
+    if result.rejected:
+        print("rejected: " + ", ".join(
+            f"{reason}={n}" for reason, n in sorted(result.rejected_counts.items())))
+    print(f"mean_reproj_error_px: {mean:.3f}" if mean is not None
+          else "mean_reproj_error_px: -")
+    print(f"poses   : {result.poses_path}")
+    print(f"report  : {result.report_path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sp3d",
@@ -241,6 +271,17 @@ def build_parser() -> argparse.ArgumentParser:
                     help="output camera model path (default: calibration.file).")
     cl.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
 
+    rp = sub.add_parser("reconstruct-poses",
+                        help="STEP 5: track keyframes and write camera_poses.csv.")
+    rp.add_argument("--frames-dir", default=None,
+                    help="frames dir with keyframes.csv (default: paths.frames).")
+    rp.add_argument("--keyframes-file", default=None,
+                    help="keyframes.csv to read (default: <frames-dir>/keyframes.csv).")
+    rp.add_argument("--camera", default=None,
+                    help="camera model YAML (default: calibration.file).")
+    rp.add_argument("--output-dir", default=None,
+                    help="output dir (default: paths.trajectory).")
+    rp.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
@@ -250,7 +291,8 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {"version": cmd_version, "doctor": cmd_doctor, "init": cmd_init,
                 "extract-frames": cmd_extract_frames,
                 "select-keyframes": cmd_select_keyframes,
-                "calibrate": cmd_calibrate}
+                "calibrate": cmd_calibrate,
+                "reconstruct-poses": cmd_reconstruct_poses}
     return handlers[args.command](args)
 
 
