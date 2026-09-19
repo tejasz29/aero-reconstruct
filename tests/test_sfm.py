@@ -18,6 +18,7 @@ from src.sfm import runner as sfm_runner
 from src.sfm.features import extract_features, match_features
 from src.sfm.pose import (
     CameraPose,
+    RelativePose,
     chain_pose,
     estimate_absolute_pose,
     estimate_relative_pose,
@@ -212,3 +213,33 @@ def test_pnp_needs_minimum_points():
     X = np.array([[0.0, 0.0, 5.0], [1.0, 0.0, 5.0], [0.0, 1.0, 5.0]])
     p = np.array([[320.0, 240.0], [420.0, 240.0], [320.0, 330.0]])
     assert estimate_absolute_pose(X, p, K) is None
+
+
+# --- chaining ---
+
+def test_chain_matches_reprojection_truth():
+    """Chain must invert the rel map: X2 = R X1 + t recovers X_cam2==X_world."""
+    rng = np.random.default_rng(1)
+    X_w = np.column_stack([rng.uniform(-2, 2, 40), rng.uniform(-2, 2, 40),
+                           rng.uniform(4, 9, 40)])
+    R0, C0 = np.eye(3), np.zeros(3)
+    t_rel = np.array([0.3, 0.1, -0.05])
+    R_rel, _ = cv2.Rodrigues(np.array([0.02, -0.03, 0.05]))
+    p1 = _project(R0 @ (X_w - C0).T)
+    p2 = _project(R_rel @ (R0 @ (X_w - C0).T) + t_rel.reshape(3, 1))
+    rel = estimate_relative_pose(p1, p2, K)
+    assert rel.valid, rel.reject_reason
+    R1, C1 = chain_pose(R0, C0, rel)
+    assert _rot_angle_deg(R1, R_rel) < 1.0
+    assert float(np.linalg.norm(C1 - (-R_rel.T @ t_rel))) < 0.05
+    X_cam1 = R_rel @ (X_w - C0).T + t_rel.reshape(3, 1)
+    X_chain = R1 @ (X_w - C1).reshape(3, -1)
+    assert float(np.max(np.abs(X_chain - X_cam1))) < 0.02
+
+
+def test_chain_pose_unit():
+    R0, C0 = np.eye(3), np.zeros(3)
+    rel = RelativePose(R=np.eye(3), t=np.zeros(3))
+    R1, C1 = chain_pose(R0, C0, rel)
+    assert np.allclose(R1, R0)
+    assert np.allclose(C1, C0)
