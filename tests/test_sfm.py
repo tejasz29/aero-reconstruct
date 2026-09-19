@@ -320,3 +320,33 @@ def test_runner_rejects_featureless_and_resumes(tmp_path):
     assert float(np.linalg.norm(np.asarray(kept[-1].C)
                                 - np.asarray(C_gt[gp2]))) < 0.10
     assert res.poses_path.is_file()
+
+
+# --- outputs schema ---
+
+def test_poses_csv_schema(tmp_path):
+    R_gt, C_gt, cam_path = _write_scene(tmp_path, n_cams=2)
+    res = sfm_runner.run_reconstruction(
+        _cfg(tmp_path), frames_dir=tmp_path / "images",
+        keyframes_file=tmp_path / "keyframes.csv", intrinsics=cam_path)
+    with open(res.poses_path, newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert list(rows[0].keys()) == sfm_runner.POSES_HEADER
+    assert len(rows) == 2
+    assert rows[0]["frame_id"] == "0" and rows[0]["kept"] == "1"
+    assert rows[0]["tx"] == "0.000000" and rows[0]["r00"] == "1.000000"
+    assert rows[1]["kept"] == "1"
+    assert rows[1]["tx"] != ""
+    float(rows[1]["r22"])  # parses as float without raising
+
+
+def test_trajectory_report_json(tmp_path):
+    R_gt, C_gt, cam_path = _write_scene(tmp_path, n_cams=2)
+    res = sfm_runner.run_reconstruction(
+        _cfg(tmp_path), frames_dir=tmp_path / "images",
+        keyframes_file=tmp_path / "keyframes.csv", intrinsics=cam_path)
+    report = json.loads(res.report_path.read_text(encoding="utf-8"))
+    assert report["keyframes"] == 2 and report["accepted"] == 2
+    assert report["backend"] in ("colmap", "opencv")
+    assert report["within_threshold"] is True
+    assert report["scale_units"].startswith("relative")
