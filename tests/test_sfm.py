@@ -145,3 +145,32 @@ def _cfg(tmp_path):
                 "max_reprojection_error_px": 2.0,
                 "min_inliers": 20, "min_parallax_px": 3.0},
     }
+
+
+# --- two-view geometry ---
+
+def test_relative_pose_recovers_ground_truth():
+    rng = np.random.default_rng(11)
+    X1 = np.column_stack([rng.uniform(-2, 2, 150), rng.uniform(-2, 2, 150),
+                          rng.uniform(4, 8, 150)])
+    t_gt = np.array([0.4, 0.1, -0.05])
+    rvec = np.array([0.05, -0.08, 0.12])
+    R_gt, _ = cv2.Rodrigues(rvec)
+    X2 = R_gt @ X1.T + t_gt.reshape(3, 1)
+    p1 = _project(X1) + rng.normal(0, 0.5, (150, 2))
+    p2 = _project(X2) + rng.normal(0, 0.5, (150, 2))
+    rel = estimate_relative_pose(p1, p2, K)
+    assert rel.valid, rel.reject_reason
+    assert rel.inlier_count >= 100
+    assert _rot_angle_deg(rel.R, R_gt) < 1.5
+    assert float(rel.t @ (t_gt / np.linalg.norm(t_gt))) > 0.98
+
+
+def test_relative_pose_rejects_no_parallax():
+    rng = np.random.default_rng(5)
+    X = np.column_stack([rng.uniform(-2, 2, 120), rng.uniform(-2, 2, 120),
+                         rng.uniform(4, 8, 120)])
+    p1 = _project(X)
+    rel = estimate_relative_pose(p1, p1.copy(), K, min_parallax_px=8.0)
+    assert not rel.valid
+    assert rel.reject_reason == "degenerate"
