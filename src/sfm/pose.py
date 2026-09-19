@@ -71,3 +71,17 @@ def _undistort_points(pts: np.ndarray, K: np.ndarray, dist: tuple) -> np.ndarray
         return pts
     rect = cv2.undistortPoints(pts.reshape(-1, 1, 2), K, dist, None, K)
     return rect.reshape(-1, 2)
+
+
+def _triangulate(points1: np.ndarray, points2: np.ndarray,
+                 K: np.ndarray, R: np.ndarray, t: np.ndarray) -> np.ndarray:
+    """Triangulate undisturbed pixel pairs into camera-1 frame 3D points.
+
+    ``P1 = K[I|0]``, ``P2 = K[R|t]``; returns (N, 3) points in camera-1
+    coordinates ('X1').
+    """
+    p1 = cv2.triangulatePoints(K @ np.hstack([np.eye(3), np.zeros((3, 1))]),
+                               K @ np.hstack([R, t.reshape(3, 1)]),
+                               points1.reshape(-1, 2).T, points2.reshape(-1, 2).T)
+    p1 = p1[:3] / p1[3]
+    return p1.T
