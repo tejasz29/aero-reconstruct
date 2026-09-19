@@ -283,3 +283,40 @@ def chain_pose(R_wc_prev: np.ndarray, C_prev: np.ndarray,
     C = (np.asarray(C_prev, dtype=np.float64)
          - (rel.R @ np.asarray(R_wc_prev, dtype=np.float64)).T @ rel.t)
     return R_wc, C
+
+
+def estimate_absolute_pose(
+    object_points: np.ndarray,
+    image_points: np.ndarray,
+    K: np.ndarray,
+    distortion: tuple[float, ...] = (0.0,) * 5,
+    ransac: bool = True,
+    ransac_threshold_px: float = 4.0,
+    iterations: int = 1000,
+    confidence: float = 0.999,
+) -> tuple[np.ndarray, np.ndarray, int] | None:
+    """PnP pose of the camera (R_wc, camera centre C) from 3D<->2D matches.
+
+    Returns ``None`` when the pose cannot be recovered (e.g. fewer than 4
+    correspondences or a RANSAC failure).
+    """
+    obj = np.asarray(object_points, dtype=np.float64).reshape(-1, 3)
+    img = np.asarray(image_points, dtype=np.float64).reshape(-1, 2)
+    dist = np.asarray(distortion, dtype=np.float64)
+    if len(obj) < 4:
+        return None
+    if len(obj) != len(img):
+        raise ValueError("object_points and image_points must have equal length")
+    if ransac:
+        ok, rvec, tvec, inliers = cv2.solvePnPRansac(
+            obj, img, K, dist, iterationsCount=iterations,
+            reprojectionError=ransac_threshold_px, confidence=confidence)
+        inlier_count = int(len(inliers)) if inliers is not None else 0
+    else:
+        ok, rvec, tvec = cv2.solvePnP(obj, img, K, dist)
+        inlier_count = len(obj)
+    if not ok:
+        return None
+    R_cw, _ = cv2.Rodrigues(rvec)
+    C = (-R_cw.T @ tvec.reshape(3)).reshape(3)
+    return R_cw, C, inlier_count
