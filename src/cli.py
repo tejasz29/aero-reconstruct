@@ -21,6 +21,8 @@ or, after ``pip install -e .``::
   write frame_scores.csv + keyframes.csv.
 * ``calibrate`` — STEP 4: camera calibration (provided | checkerboard |
   charuco) -> validated calibration/camera.yaml + report.
+* ``reconstruct-poses`` — STEP 5: track keyframes -> camera_poses.csv +
+  trajectory report (SIFT/ORB, essential-matrix RANSAC, chained poses).
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """
@@ -238,6 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
     cl.add_argument("--output", default=None,
                     help="output camera model path (default: calibration.file).")
     cl.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
+
     return parser
 
 
