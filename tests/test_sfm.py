@@ -278,3 +278,27 @@ def test_match_produces_cross_checked_correspondences():
     p0 = np.asarray([kp0[i].pt for i in idx0])
     p1 = np.asarray([kp1[i].pt for i in idx1])
     assert float(np.median(np.linalg.norm(p1 - p0, axis=1))) > 0.0
+
+
+# --- end-to-end runner ---
+
+def test_runner_reconstructs_forward_trajectory(tmp_path):
+    R_gt, C_gt, cam_path = _write_scene(tmp_path, n_cams=5)
+    res = sfm_runner.run_reconstruction(
+        _cfg(tmp_path), frames_dir=tmp_path / "images",
+        keyframes_file=tmp_path / "keyframes.csv", intrinsics=cam_path)
+    assert res.backend in ("colmap", "opencv")
+    assert len(res.poses) == 5 and len(res.kept) >= 4
+    kept = res.kept
+    kept_gt = [p for p in (R_gt, C_gt)]  # placeholder pairing, refined below
+    assert len(kept) >= 4
+    kept = kept[1:]
+    for k in range(len(kept)):
+        gp = min(range(len(C_gt)), key=lambda i: float(np.linalg.norm(
+            np.asarray(C_gt[i]) - np.asarray(kept[k].C, dtype=np.float64))))
+        assert _rot_angle_deg(kept[k].R_wc, R_gt[gp]) < 10.0, f"rot pose {k}"
+        assert float(np.linalg.norm(np.asarray(kept[k].C)
+                                    - np.asarray(C_gt[gp]))) < 0.10, f"pos pose {k}"
+    assert res.mean_reproj_error_px is not None
+    assert res.mean_reproj_error_px < 1.5
+    assert res.poses_path.is_file() and res.report_path.is_file()
