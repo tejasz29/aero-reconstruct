@@ -85,3 +85,28 @@ def _triangulate(points1: np.ndarray, points2: np.ndarray,
                                points1.reshape(-1, 2).T, points2.reshape(-1, 2).T)
     p1 = p1[:3] / p1[3]
     return p1.T
+
+
+def _validate_pair(r1i: np.ndarray, r2i: np.ndarray, K: np.ndarray,
+                   R: np.ndarray, t: np.ndarray,
+                   min_inliers: int) -> tuple | None:
+    """Triangulate and score one (R, t) hypothesis.
+
+    Returns ``(front_count, X1, i1, i2, mean_error, parallax)`` where inlier
+    points triangulate in front of both cameras and reproject tightly, or
+    ``None`` when fewer than ``min_inliers`` correspondences survive.
+    """
+    X1 = _triangulate(r1i, r2i, K, R, t)
+    z2 = (R @ X1.T).T + t
+    front = (X1[:, 2] > 1e-3) & (z2[:, 2] > 1e-3)
+    if int(front.sum()) < min_inliers:
+        return None
+    X1, i1, i2 = X1[front], r1i[front], r2i[front]
+    p1_re = K @ X1.T
+    p1_rows = (p1_re[:2] / p1_re[2]).T
+    X2 = X1 @ R.T + t
+    p2_rows = (K @ X2.T)[:2] / (K @ X2.T)[2]
+    errors = np.linalg.norm(p1_rows - i1, axis=1) \
+        + np.linalg.norm(p2_rows.T - i2, axis=1)
+    parallax = float(np.median(np.linalg.norm(i2 - i1, axis=1)))
+    return int(len(X1)), X1, i1, i2, float(np.mean(errors)), parallax
