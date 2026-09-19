@@ -73,6 +73,13 @@ python -m src.cli calibrate
                              # STEP 4: calibration/camera.yaml from provided intrinsics,
                              #         checkerboard photos, or Charuco photos
                              #   + report = outputs/reports/calibration_report.json
+python -m src.cli reconstruct-poses
+                             # STEP 5: camera poses per keyframe via classical SfM
+                             #   (SIFT/ORB -> matching -> essential matrix -> chain)
+                             #   COLMAP requested (sfm.backend) falls back to the
+                             #   bundled OpenCV tracker with a warning
+                             #   outputs/trajectory/camera_poses.csv
+                             #   + outputs/reports/trajectory_report.json
 ```
 
 Pipeline-stage subcommands (`preprocess`, `reconstruct`, …) are
@@ -100,7 +107,10 @@ python -m pytest tests/ -v
 Current coverage (STEP 1): layout integrity, config load/merge/`get()`,
 logging (file + rotation + YAML-driven), CLI smoke tests.
 (STEP 2) frame extraction math, (STEP 3) quality scorers + keyframe selection,
-(STEP 4) intrinsics model + checkerboard/Charuco + expected-output runner tests.
+(STEP 4) intrinsics model + checkerboard/Charuco + expected-output runner tests,
+(STEP 5) SIFT/ORB extraction + matching, essential-matrix/PnP recovery on
+synthetic GT, pose chaining, runner e2e on a rendered 5-view pass, rejection
+and resume paths, backend fallback.
 
 ## 6. Pipeline status
 
@@ -110,8 +120,8 @@ logging (file + rotation + YAML-driven), CLI smoke tests.
 | 2 | Video loading + frame extraction | ✅ done |
 | 3 | Frame quality + keyframe selection | ✅ done |
 | 4 | Camera calibration | ✅ done |
-| 5 | COLMAP/SfM baseline | ⬜ next |
-| 6 | Trajectory visualisation | ⬜ |
+| 5 | SfM baseline (poses) | ✅ done (classical OpenCV; COLMAP fallback) |
+| 6 | Trajectory visualisation | ⬜ next |
 | 7 | GPS parsing + metric conversion | ⬜ |
 | 8 | Visual ↔ GPS alignment | ⬜ |
 | 9–10 | Learned depth → 3D | ⬜ |
@@ -122,6 +132,7 @@ logging (file + rotation + YAML-driven), CLI smoke tests.
 | 18–19 | Viewer + backend | ⬜ |
 | 20 | Near-real-time optimisation | ⬜ (after offline works) |
 
-**Next recommended step: STEP 5** — COLMAP/SfM baseline
-(`src/sfm/`, `src/tracking/`): sparse reconstruction of the keyframes into
-`outputs/trajectory/camera_poses.csv`, using the STEP 4 intrinsics.
+**Next recommended step: STEP 6** — trajectory visualisation
+(`src/sfm/visualize.py`): plot the estimated camera path from
+`outputs/trajectory/camera_poses.csv` to sanity-check the STEP 5 poses,
+then loop back to GPS alignment (STEP 7–8) before learned depth.
