@@ -108,3 +108,28 @@ def _read_keyframes(path: Path) -> list[dict]:
     with open(path, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     return sorted(rows, key=lambda r: float(r["timestamp_s"]))
+
+
+def _write_poses_csv(path: Path, poses: list[CameraPose]) -> Path:
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(POSES_HEADER)
+        for pose in poses:
+            row = [pose.frame_id, pose.source_index, f"{pose.timestamp_s:.6f}",
+                   pose.filename, int(pose.kept), pose.reject_reason]
+            if pose.kept and pose.C is not None and pose.R_wc is not None:
+                C = np.asarray(pose.C, dtype=np.float64)
+                R = np.asarray(pose.R_wc, dtype=np.float64)
+                row += [f"{v:.6f}" for v in C.ravel()]
+                row += [f"{v:.6f}" for v in R.ravel()]
+                row += [pose.inliers]
+                err, par = "", ""
+                if pose.mean_reproj_error_px is not None:
+                    err = f"{pose.mean_reproj_error_px:.4f}"
+                if pose.median_parallax_px is not None:
+                    par = f"{pose.median_parallax_px:.4f}"
+                row += [err, par]
+            else:
+                row += [""] * (len(POSES_HEADER) - len(row))
+            writer.writerow(row)
+    return path
