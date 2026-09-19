@@ -243,3 +243,38 @@ def test_chain_pose_unit():
     R1, C1 = chain_pose(R0, C0, rel)
     assert np.allclose(R1, R0)
     assert np.allclose(C1, C0)
+
+
+# --- features & matching ---
+
+def test_extract_features_sift_and_orb():
+    R_wc, C = _gt_cameras(n=1)
+    img = _render_view(_point_cloud(), R_wc[0], C[0])
+    kp, des = extract_features(img, "sift", max_features=8000)
+    assert des is not None and len(kp) > 500
+    assert des.shape[0] == len(kp) and des.shape[1] == 128
+    kp2, des2 = extract_features(img, "orb", max_features=2000)
+    assert des2 is not None and 500 < len(kp2) <= 2000
+    assert des2.shape[1] == 32 and des2.dtype == np.uint8
+
+
+def test_featureless_frame_returns_none():
+    kp, des = extract_features(np.zeros((H, W), np.uint8), "sift")
+    assert des is None and kp == []
+
+
+def test_match_produces_cross_checked_correspondences():
+    R_wc, C = _gt_cameras(n=2)
+    X = _point_cloud()
+    img0 = _render_view(X, R_wc[0], C[0])
+    img1 = _render_view(X, R_wc[1], C[1])
+    kp0, des0 = extract_features(img0, "sift")
+    kp1, des1 = extract_features(img1, "sift")
+    matches = match_features(des0, des1)
+    assert len(matches) >= 60
+    idx0, idx1 = matches[:, 0], matches[:, 1]
+    assert len(set(idx0.tolist())) == len(idx0)
+    assert len(set(idx1.tolist())) == len(idx1)
+    p0 = np.asarray([kp0[i].pt for i in idx0])
+    p1 = np.asarray([kp1[i].pt for i in idx1])
+    assert float(np.median(np.linalg.norm(p1 - p0, axis=1))) > 0.0
