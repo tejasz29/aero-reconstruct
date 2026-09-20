@@ -90,3 +90,18 @@ def test_read_csv_missing_column_raises(tmp_path):
                          headers=("t", "lat", "lng"))
     with pytest.raises(ValueError, match="altitude"):
         read_gps_csv(path)
+
+
+def test_validate_fixes_accepts_valid_bounds():
+    ok = [REF_A, GPSFix(0.0, 90.0, -180.0, -500.0),
+          GPSFix(0.0, -90.0, 180.0, 60000.0)]
+    assert validate_fixes(ok) == ok
+
+
+def test_validate_fixes_rejects_out_of_range():
+    bad = [GPSFix(-1.0, 0.0, 0.0, 0.0),          # negative timestamp
+           GPSFix(0.0, 91.0, 0.0, 0.0),          # latitude too far north
+           GPSFix(0.0, 0.0, 181.0, 0.0),         # longitude too far east
+           GPSFix(0.0, 0.0, 0.0, -600.0)]        # altitude below cut-off
+    with pytest.raises(ValueError, match="invalid GPS fixes"):
+        validate_fixes(bad)
