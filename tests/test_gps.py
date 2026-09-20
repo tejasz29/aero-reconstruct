@@ -110,3 +110,20 @@ def test_validate_fixes_rejects_out_of_range():
 def test_wgs84_distance_eiffel_to_louvre():
     distance = wgs84_distance_m(REF_A, REF_B)
     assert 3350.0 <= distance <= 3360.0
+
+
+def test_geodetic_to_enu_origin_at_first_fix():
+    metric = geodetic_to_enu(synthetic_flight(3))
+    origin = metric[0]
+    assert abs(origin.easting_m) < 1e-6
+    assert abs(origin.northing_m) < 1e-6
+    assert abs(origin.up_m) < 1e-6
+    assert metric[0].latitude == metric[0].latitude  # provenance preserved
+
+
+def test_geodetic_to_enu_direction_and_scale():
+    metric = geodetic_to_enu(synthetic_flight(3))
+    forward = metric[1]
+    assert -1e-3 < forward.easting_m < 1e-3       # pure north step
+    assert 9.5 <= forward.northing_m <= 10.5      # 9e-5 deg lat ~ 10 m
+    assert forward.up_m == pytest.approx(0.4, abs=1e-6)
