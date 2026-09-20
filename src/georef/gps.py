@@ -176,3 +176,25 @@ def enu_origin(fixes: list[GPSFix]) -> GPSFix:
     coordinates share a stable, interpretable reference point.
     """
     return fixes[0]
+
+
+_WGS84_A = 6378137.0
+_WGS84_F = 1.0 / 298.257223563
+_WGS84_E2 = _WGS84_F * (2.0 - _WGS84_F)
+
+
+def _geodetic_to_ecef(latitude_deg: float, longitude_deg: float,
+                      altitude_m: float) -> tuple[float, float, float]:
+    """Convert WGS84 geodetic to Earth-Centred Earth-Fixed XYZ (metres).
+
+    Uses the closed-form oblate-spheroid solution (Bowring-style through the
+    prime-vertical radius of curvature); no iterations required.
+    """
+    lat = math.radians(latitude_deg)
+    lon = math.radians(longitude_deg)
+    sin_lat, cos_lat = math.sin(lat), math.cos(lat)
+    n_radius = _WGS84_A / math.sqrt(1.0 - _WGS84_E2 * sin_lat * sin_lat)
+    x = (n_radius + altitude_m) * cos_lat * math.cos(lon)
+    y = (n_radius + altitude_m) * cos_lat * math.sin(lon)
+    z = (n_radius * (1.0 - _WGS84_E2) + altitude_m) * sin_lat
+    return x, y, z
