@@ -32,8 +32,19 @@ def test_doctor_fails_on_broken_layout(tmp_path, monkeypatch, capsys):
 def test_build_parser_lists_all_stage_subcommands():
     help_text = cli.build_parser().format_help()
     for subcommand in ("extract-frames", "select-keyframes", "calibrate",
-                       "reconstruct-poses", "show-trajectory"):
+                       "reconstruct-poses", "show-trajectory", "convert-gps"):
         assert subcommand in help_text
+
+
+def test_convert_gps_parser_exposes_expected_flags():
+    parser = cli.build_parser()
+    args = parser.parse_args(["convert-gps", "--gps-file", "gps.csv",
+                              "--output-dir", "geo", "--crs", "utm",
+                              "--utm-zone", "10"])
+    assert args.gps_file == "gps.csv"
+    assert args.output_dir == "geo"
+    assert args.crs == "utm"
+    assert args.utm_zone == 10
 
 
 def test_reconstruct_poses_parser_exposes_expected_flags():
