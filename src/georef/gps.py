@@ -225,3 +225,33 @@ def _ecef_to_enu(ecef: tuple[float, float, float],
           + cos_lat * sin_lon * dy
           + sin_lat * dz)
     return east, north, up
+
+
+def geodetic_to_enu(fixes: list[GPSFix],
+                    origin: Optional[GPSFix] = None) -> list[MetricFix]:
+    """Project the fixes into an east-north-up frame anchored at ``origin``.
+
+    The origin defaults to the first fix.  Heights (``up_m``) are measured
+    relative to the origin's ellipsoid altitude, above the WGS84 ellipsoid.
+    """
+    if not fixes:
+        raise ValueError("cannot project an empty fix list")
+    tangent = origin if origin is not None else fixes[0]
+    origin_ecef = _geodetic_to_ecef(
+        tangent.latitude, tangent.longitude, tangent.altitude_m)
+    metric: list[MetricFix] = []
+    for fix in fixes:
+        x, y, z = _geodetic_to_ecef(
+            fix.latitude, fix.longitude, fix.altitude_m)
+        east, north, up = _ecef_to_enu(
+            (x, y, z), origin_ecef, tangent.latitude, tangent.longitude)
+        metric.append(MetricFix(
+            timestamp_s=fix.timestamp_s,
+            latitude=fix.latitude,
+            longitude=fix.longitude,
+            altitude_m=fix.altitude_m,
+            easting_m=east,
+            northing_m=north,
+            up_m=up,
+        ))
+    return metric
