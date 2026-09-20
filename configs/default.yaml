@@ -82,9 +82,10 @@ visualization:
 
 # --- STEP 7: GPS metric conversion ---
 gps:
-  input_format: "csv"        # csv with columns: timestamp,latitude,longitude,altitude
-  local_crs: "enu"           # enu for small scenes | utm for larger scenes
-  utm_zone: "auto"
+  file: "data/gps/gps.csv"     # capture-pipeline GPS log (STEP 2)
+  local_crs: "auto"            # auto | enu | utm  (auto: ENU for short tracks, UTM otherwise)
+  auto_crs_max_extent_m: 1500.0  # ground-track extent above which auto switches to UTM
+  utm_zone: "auto"             # auto | <zone int 1..60>
 
 # --- STEP 8: visual <-> GPS similarity alignment  Xg = s*R*Xv + t ---
 alignment:
