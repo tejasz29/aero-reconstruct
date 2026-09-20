@@ -70,6 +70,16 @@ sfm:
   min_inliers: 20                  # RANSAC inliers needed to accept a pair
   min_parallax_px: 3.0             # median inlier displacement; below = no baseline
 
+# --- STEP 6: trajectory visualisation ---
+# Sanity-check the STEP 5 path before heavy downstream steps. PNGs go under
+# paths.reports; matplotlib runs headless (Agg) — no display needed.
+visualization:
+  dpi: 150
+  figsize: [10, 8]
+  topdown_projection: "xy"    # xy | xz | yz  (world axes shown on the 2D plot)
+  draw_frustums: true         # per-pose camera orientation pyramids (3D view)
+  frustum_scale: 0.2          # frustum size relative to the world units
+
 # --- STEP 7: GPS metric conversion ---
 gps:
   input_format: "csv"        # csv with columns: timestamp,latitude,longitude,altitude
