@@ -25,6 +25,8 @@ or, after ``pip install -e .``::
   trajectory report (SIFT/ORB, essential-matrix RANSAC, chained poses).
 * ``show-trajectory`` — STEP 6: plot camera_poses.csv -> 3D + top-down
   figures under outputs/reports/ (sanity-check before heavy steps).
+* ``convert-gps`` — STEP 7: project the GPS log into metric coordinates
+  (ENU or UTM) -> outputs/georef/gps_metric.csv + report.
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """

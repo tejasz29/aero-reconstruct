@@ -117,6 +117,8 @@ synthetic GT, pose chaining, runner e2e on a rendered 5-view pass, rejection
 and resume paths, backend fallback.
 (STEP 6) pose CSV round-trip, camera-axis convention, top-down projection math,
 headless PNG output incl. single-pose and rejected-only edge cases, CLI surface.
+(STEP 7) GPS reader + column aliases, WGS84 bounds validation, geodesic
+distance ground truth, ENU/UTM conversions, CRS auto-resolution, runner e2e.
 
 ## 6. Pipeline status
 
@@ -128,8 +130,8 @@ headless PNG output incl. single-pose and rejected-only edge cases, CLI surface.
 | 4 | Camera calibration | ✅ done |
 | 5 | SfM baseline (poses) | ✅ done (classical OpenCV; COLMAP fallback) |
 | 6 | Trajectory visualisation | ✅ done |
-| 7 | GPS parsing + metric conversion | ⬜ next |
-| 8 | Visual ↔ GPS alignment | ⬜ |
+| 7 | GPS parsing + metric conversion | ✅ done |
+| 8 | Visual ↔ GPS alignment | ⬜ next |
 | 9–10 | Learned depth → 3D | ⬜ |
 | 11–12 | Fusion + filtering | ⬜ |
 | 13 | Dynamic-object segmentation | ⬜ |
@@ -138,6 +140,7 @@ headless PNG output incl. single-pose and rejected-only edge cases, CLI surface.
 | 18–19 | Viewer + backend | ⬜ |
 | 20 | Near-real-time optimisation | ⬜ (after offline works) |
 
-**Next recommended step: STEP 7** — GPS parsing + metric conversion
-(`src/georef/gps.py`): `timestamp,lat,lon,alt` → ENU/UTM metric
-coordinates, the input that STEP 8 uses to resolve the SfM scale.
+**Next recommended step: STEP 8** — Visual ↔ GPS alignment
+(`src/georef/align.py`): similar-transform `X_g = s·R·X_v + t` over the STEP 5
+poses and STEP 7 metric `gps_metric.csv` to resolve the monocular scale and
+global frame for the reconstruction.

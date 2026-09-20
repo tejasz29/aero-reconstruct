@@ -4,7 +4,7 @@ Source of truth for build order. A step is **done** only when: implemented,
 tested green, demoed on real or synthetic data, README status updated, and
 committed + pushed. Never start the next step on a broken tree.
 
-**Progress: STEPS 1–6 done · STEP 7 next · 79/79 tests passing.**
+**Progress: STEPS 1–7 done · STEP 8 next · 96/96 tests passing.**
 
 Conventions every step follows: tunables live in `configs/default.yaml`
 (never hard-coded); every stage logs via `src.common.logging_utils`;
@@ -189,13 +189,38 @@ poses, unknown-projection error, CLI parser).
 
 **Commits:** STEP 6 commits listed after push (see git log).
 
-## STEP 7 — GPS parsing + metric conversion ⬜
+## STEP 7 — GPS parsing + metric conversion ✅ done
 
 **What:** `timestamp,lat,lon,alt` → metric coordinates. Local ENU for small
 scenes, auto UTM for larger ones. Never treat lat/lon as metres.
-**Outputs:** `outputs/georef/gps_metric.csv`. **Files:** `src/georef/gps.py`
-· CLI `convert-gps`. **Tests:** known-point conversion (distance between two
-reference coordinates), ENU origin correctness, UTM zone selection.
+**Algorithm:** `GPSFix` contract (`timestamp_s,latitude,longitude,
+altitude_m`, WGS84) → CSV reader with column aliases (time/t, lat, lng/alt,
+…) → range validation (lat ±90, lon ±180, alt ≥ -500 m, finite timestamps) →
+`wgs84_distance_m` (pyproj `Geod`) → ENU tangent plane from pure ECEF math
+(Bowring-style radius of curvature, closed-form rotation anchored at the
+first fix) or UTM via pyproj `Transformer` (zone `1..60`, EPSG 326xx/327xx,
+heights relative to the first fix). `resolve_crs` honours `gps.local_crs`
+(`auto|enu|utm`): `auto` stays ENU while the track extent
+(`track_extent_m`, bounding-box diagonal) is under `gps.auto_crs_max_extent_m`,
+otherwise switches to UTM. A runner (`run_gps_conversion`) reads config,
+projects, and writes both outputs.
+**Outputs:** `outputs/georef/gps_metric.csv`
+(`timestamp_s,latitude,longitude,altitude_m,easting_m,northing_m,up_m,crs,zone`)
++ `outputs/reports/gps_report.json` (source, n_fixes, crs, zone, WGS84 datum,
+origin, extent_m).
+**Files:** `src/georef/gps.py` · `src/georef/__init__.py` · `src/cli.py` +=
+`convert-gps` (`--gps-file`, `--output-dir`, `--crs`, `--utm-zone`) · config
++= `gps.file`, `gps.local_crs`, `gps.auto_crs_max_extent_m`, `gps.utm_zone`.
+**Tests:** 96 passed (+16: fix contract, canonical + aliased CSV headers,
+missing-column error, WGS84 bounds accept/reject, Eiffel→Louvre geodesic
+ground truth (~3177 m), ENU origin + direction/scale, UTM zone/EPSG lookup,
+UTM projection plausibility, track extent, CRS auto/ENU/UTM rules + override,
+runner e2e outputs, CLI parser).
+**Verify:** `python -m src.cli convert-gps` (config-driven; flags override)
+→ check `outputs/georef/gps_metric.csv` + `outputs/reports/gps_report.json`.
+
+**Commits (33):** STEP 7 split into 33 granular commits, pushed to origin/main
+(see `git log --oneline 1d5e026..HEAD`).
 
 ## STEP 8 — Visual ↔ GPS alignment ⬜
 
