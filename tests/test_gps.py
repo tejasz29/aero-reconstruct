@@ -184,7 +184,8 @@ def test_run_gps_conversion_writes_metric_csv_and_report(tmp_path):
         (0.0, 47.6062, -122.3321, 100.0),
         (0.1, 47.6062 + 9e-5, -122.3321 + 9e-5, 100.4),
     ])
-    result = run_gps_conversion({}, gps_file=path, output_dir=tmp_path / "geo")
+    cfg = {"paths": {"reports": str(tmp_path / "reports")}}
+    result = run_gps_conversion(cfg, gps_file=path, output_dir=tmp_path / "geo")
 
     assert isinstance(result, GpsResult)
     assert result.n_fixes == 2
