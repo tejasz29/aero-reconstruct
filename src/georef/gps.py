@@ -308,3 +308,21 @@ def geodetic_to_utm(fixes: list[GPSFix],
             up_m=fix.altitude_m - base_alt,
         ))
     return metric, zone_used
+
+
+def track_extent_m(metric: list[MetricFix]) -> float:
+    """Diagonal of the metric bounding box, in metres (ground + height).
+
+    Used to decide whether a flat ENU tangent plane is accurate enough for
+    the flight: beyond a few kilometres the plane-to-ellipsoid error starts
+    to matter and a projected CRS such as UTM should be preferred.
+    """
+    if not metric:
+        return 0.0
+    easts = [m.easting_m for m in metric]
+    norths = [m.northing_m for m in metric]
+    ups = [m.up_m for m in metric]
+    de = max(easts) - min(easts)
+    dn = max(norths) - min(norths)
+    du = max(ups) - min(ups)
+    return math.sqrt(de * de + dn * dn + du * du)
