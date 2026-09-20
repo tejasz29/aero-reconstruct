@@ -105,3 +105,8 @@ def test_validate_fixes_rejects_out_of_range():
            GPSFix(0.0, 0.0, 0.0, -600.0)]        # altitude below cut-off
     with pytest.raises(ValueError, match="invalid GPS fixes"):
         validate_fixes(bad)
+
+
+def test_wgs84_distance_eiffel_to_louvre():
+    distance = wgs84_distance_m(REF_A, REF_B)
+    assert 3350.0 <= distance <= 3360.0
