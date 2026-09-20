@@ -353,3 +353,31 @@ def resolve_crs(fixes: list[GPSFix], local_crs: str = "auto",
         fixes[0].longitude, fixes[0].latitude)
     extent = track_extent_m(geodetic_to_enu(fixes))
     return ("enu", None) if extent <= auto_crs_max_extent_m else ("utm", zone)
+
+
+_METRIC_CSV_COLUMNS = (
+    "timestamp_s", "latitude", "longitude", "altitude_m",
+    "easting_m", "northing_m", "up_m", "crs", "zone",
+)
+
+
+def write_metric_csv(metric: list[MetricFix], path: str | Path,
+                     crs: str, zone: Optional[str]) -> str:
+    """Write the metric fixes to ``path``; returns the absolute path string.
+
+    ``easting_m/northing_m/up_m`` are in ``crs`` (``'enu'`` or ``'utm'``),
+    with ``zone`` recording the UTM zone used (empty for ENU).
+    """
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(_METRIC_CSV_COLUMNS)
+        zone_cell = zone if zone is not None else ""
+        for m in metric:
+            writer.writerow([
+                f"{m.timestamp_s:.6f}", m.latitude, m.longitude,
+                m.altitude_m, f"{m.easting_m:.6f}", f"{m.northing_m:.6f}",
+                f"{m.up_m:.6f}", crs, zone_cell,
+            ])
+    return str(out.resolve())
