@@ -15,6 +15,7 @@ degrees as metres.
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import math
 from dataclasses import dataclass
@@ -380,4 +381,27 @@ def write_metric_csv(metric: list[MetricFix], path: str | Path,
                 m.altitude_m, f"{m.easting_m:.6f}", f"{m.northing_m:.6f}",
                 f"{m.up_m:.6f}", crs, zone_cell,
             ])
+    return str(out.resolve())
+
+
+def write_report_json(result: GpsResult, path: str | Path) -> str:
+    """Persist the conversion report as JSON; returns the absolute path."""
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    report = {
+        "source": result.source,
+        "n_fixes": result.n_fixes,
+        "crs": result.crs,
+        "zone": result.zone if result.zone is not None else "",
+        "datum": "WGS84",
+        "origin": {
+            "timestamp_s": result.origin.timestamp_s,
+            "latitude": result.origin.latitude,
+            "longitude": result.origin.longitude,
+            "altitude_m": result.origin.altitude_m,
+        },
+        "extent_m": round(result.extent_m, 3),
+        "metric_csv": result.metric_csv,
+    }
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return str(out.resolve())
