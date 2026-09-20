@@ -40,6 +40,7 @@ from src.common.config_loader import get, load_config
 from src.common.logging_utils import get_logger, setup_logging
 from src.common.paths import PROJECT_ROOT, project_paths
 from src.calibration.runner import resolve_calibration
+from src.georef.gps import run_gps_conversion
 from src.sfm.runner import run_reconstruction
 from src.sfm.visualize import plot_trajectory, read_poses_csv
 from src.video.frame_extractor import extract_frames
@@ -261,6 +262,32 @@ def cmd_show_trajectory(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_convert_gps(args: argparse.Namespace) -> int:
+    """STEP 7 — project the GPS log into metric coordinates + report."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    gps_file = Path(args.gps_file) if args.gps_file else Path(
+        get(cfg, "gps.file", "data/gps/gps.csv"))
+    if not gps_file.is_absolute():
+        gps_file = PROJECT_ROOT / gps_file
+    output_dir = Path(args.output_dir) if args.output_dir else None
+
+    result = run_gps_conversion(
+        cfg, gps_file=gps_file, output_dir=output_dir,
+        crs=args.crs, zone_override=args.utm_zone)
+    zone = result.zone if result.zone is not None else "-"
+    print(f"source : {result.source}")
+    print(f"fixes  : {result.n_fixes}")
+    print(f"crs    : {result.crs} (zone {zone})")
+    print(f"origin : {result.origin.latitude:.7f}, {result.origin.longitude:.7f}, "
+          f"{result.origin.altitude_m:.2f} m")
+    print(f"extent : {result.extent_m:.1f} m")
+    print(f"output : {result.metric_csv}")
+    print(f"report : {result.report_json}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sp3d",
@@ -341,7 +368,8 @@ def main(argv: list[str] | None = None) -> int:
                 "select-keyframes": cmd_select_keyframes,
                 "calibrate": cmd_calibrate,
                 "reconstruct-poses": cmd_reconstruct_poses,
-                "show-trajectory": cmd_show_trajectory}
+                "show-trajectory": cmd_show_trajectory,
+                "convert-gps": cmd_convert_gps}
     return handlers[args.command](args)
 
 
