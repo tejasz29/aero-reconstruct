@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -98,4 +99,27 @@ def read_gps_csv(path: str | Path) -> list[GPSFix]:
             ))
     if not fixes:
         raise ValueError(f"no GPS fixes found in {csv_path}")
+    return fixes
+
+
+def validate_fixes(fixes: list[GPSFix]) -> list[GPSFix]:
+    """Range-check every fix; raise ``ValueError`` with offending row indices.
+
+    WGS84 constraints enforced: latitude in [-90, 90], longitude in
+    [-180, 180], altitude >= -500 m (below the Dead Sea trench, comfortably
+    below any drone flight), and finite non-negative timestamps.
+    """
+    bad: list[str] = []
+    for i, fix in enumerate(fixes):
+        if not math.isfinite(fix.timestamp_s) or fix.timestamp_s < 0:
+            bad.append(f"row {i}: timestamp {fix.timestamp_s!r}")
+        if not (-90.0 <= fix.latitude <= 90.0):
+            bad.append(f"row {i}: latitude {fix.latitude!r}")
+        if not (-180.0 <= fix.longitude <= 180.0):
+            bad.append(f"row {i}: longitude {fix.longitude!r}")
+        if not math.isfinite(fix.altitude_m) or fix.altitude_m < -500.0:
+            bad.append(f"row {i}: altitude {fix.altitude_m!r}")
+    if bad:
+        joined = "; ".join(bad)
+        raise ValueError(f"invalid GPS fixes ({len(bad)}): {joined}")
     return fixes
