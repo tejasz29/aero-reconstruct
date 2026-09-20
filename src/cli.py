@@ -23,6 +23,8 @@ or, after ``pip install -e .``::
   charuco) -> validated calibration/camera.yaml + report.
 * ``reconstruct-poses`` — STEP 5: track keyframes -> camera_poses.csv +
   trajectory report (SIFT/ORB, essential-matrix RANSAC, chained poses).
+* ``show-trajectory`` — STEP 6: plot camera_poses.csv -> 3D + top-down
+  figures under outputs/reports/ (sanity-check before heavy steps).
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """
@@ -39,6 +41,7 @@ from src.common.logging_utils import get_logger, setup_logging
 from src.common.paths import PROJECT_ROOT, project_paths
 from src.calibration.runner import resolve_calibration
 from src.sfm.runner import run_reconstruction
+from src.sfm.visualize import plot_trajectory, read_poses_csv
 from src.video.frame_extractor import extract_frames
 from src.video.keyframes import run_selection
 
@@ -236,6 +239,28 @@ def cmd_reconstruct_poses(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_show_trajectory(args: argparse.Namespace) -> int:
+    """STEP 6 — plot the estimated camera path (camera_poses.csv -> PNGs)."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    poses_path = Path(args.poses_csv) if args.poses_csv else Path(
+        get(cfg, "paths.trajectory", "outputs/trajectory")) / "camera_poses.csv"
+    if not poses_path.is_absolute():
+        poses_path = PROJECT_ROOT / poses_path
+    out_dir = Path(args.output_dir) if args.output_dir else Path(
+        get(cfg, "paths.reports", "outputs/reports"))
+    if not out_dir.is_absolute():
+        out_dir = PROJECT_ROOT / out_dir
+
+    plots = plot_trajectory(read_poses_csv(poses_path), out_dir, cfg,
+                            topdown_projection=args.topdown)
+    print(f"poses   : {poses_path}")
+    for path in plots.paths:
+        print(f"figure  : {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sp3d",
@@ -282,6 +307,16 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--output-dir", default=None,
                     help="output dir (default: paths.trajectory).")
     rp.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
+
+    vt = sub.add_parser("show-trajectory",
+                        help="STEP 6: plot camera poses into PNGs (3D + top-down).")
+    vt.add_argument("--poses-csv", default=None,
+                    help="pose CSV (default: <paths.trajectory>/camera_poses.csv).")
+    vt.add_argument("--output-dir", default=None,
+                    help="figures output dir (default: paths.reports).")
+    vt.add_argument("--topdown", default=None, choices=["xy", "xz", "yz"],
+                    help="override visualization.topdown_projection.")
+    vt.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
@@ -292,7 +327,8 @@ def main(argv: list[str] | None = None) -> int:
                 "extract-frames": cmd_extract_frames,
                 "select-keyframes": cmd_select_keyframes,
                 "calibrate": cmd_calibrate,
-                "reconstruct-poses": cmd_reconstruct_poses}
+                "reconstruct-poses": cmd_reconstruct_poses,
+                "show-trajectory": cmd_show_trajectory}
     return handlers[args.command](args)
 
 
