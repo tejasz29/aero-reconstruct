@@ -22,6 +22,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from src.common.config_loader import get
+from src.common.paths import PROJECT_ROOT
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_GPS_COLUMNS = ("timestamp_s", "latitude", "longitude", "altitude_m")
@@ -405,3 +408,74 @@ def write_report_json(result: GpsResult, path: str | Path) -> str:
     }
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return str(out.resolve())
+
+
+def run_gps_conversion(
+    cfg: dict,
+    gps_file: str | Path | None = None,
+    output_dir: str | Path | None = None,
+    crs: str | None = None,
+    zone_override: int | None = None,
+) -> GpsResult:
+    """STEP 7 entry point: parse the GPS log and write metric + report.
+
+    Reads tunables from ``cfg`` (``gps.local_crs``, ``gps.auto_crs_max_extent_m``,
+    ``gps.utm_zone``); ``crs``/``zone_override`` override them so callers and
+    tests can pin the backend.  Writes ``outputs/georef/gps_metric.csv`` and
+    ``outputs/reports/gps_report.json``.
+    """
+    src = Path(gps_file) if gps_file else Path(
+        get(cfg, "gps.file", "data/gps/gps.csv"))
+    if not src.is_absolute():
+        src = PROJECT_ROOT / src
+
+    local_crs = crs or str(get(cfg, "gps.local_crs", "auto"))
+    max_extent = float(get(cfg, "gps.auto_crs_max_extent_m", 1500.0))
+    cfg_zone = str(get(cfg, "gps.utm_zone", "auto")).strip().lower()
+    if zone_override is not None:
+        zone = zone_override
+    elif cfg_zone not in ("", "auto"):
+        zone = int(cfg_zone)
+    else:
+        zone = None
+
+    fixes = validate_fixes(read_gps_csv(src))
+    crs_name, zone_used = resolve_crs(
+        fixes, local_crs=local_crs, auto_crs_max_extent_m=max_extent,
+        utm_zone_override=zone)
+
+    if crs_name == "utm":
+        metric, zone_used = geodetic_to_utm(fixes, zone=zone_used)
+        zone_label = f"{utm_hemisphere(fixes[0].latitude)}{zone_used:02d}"
+    else:
+        metric = geodetic_to_enu(fixes)
+        zone_label = None
+
+    out_dir = Path(output_dir) if output_dir else Path(
+        get(cfg, "paths.georef", "outputs/georef"))
+    if not out_dir.is_absolute():
+        out_dir = PROJECT_ROOT / out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    metric_csv = write_metric_csv(
+        metric, out_dir / "gps_metric.csv", crs_name, zone_label)
+
+    report_dir = Path(get(cfg, "paths.reports", "outputs/reports"))
+    if not report_dir.is_absolute():
+        report_dir = PROJECT_ROOT / report_dir
+    report_dir.mkdir(parents=True, exist_ok=True)
+    origin = enu_origin(fixes)
+    result = GpsResult(
+        source=str(src.resolve()),
+        n_fixes=len(fixes),
+        crs=crs_name,
+        zone=zone_label,
+        origin=origin,
+        extent_m=track_extent_m(metric),
+        metric_csv=metric_csv,
+        report_json="",
+    )
+    report_json = write_report_json(result, report_dir / "gps_report.json")
+    return GpsResult(
+        source=result.source, n_fixes=result.n_fixes, crs=result.crs,
+        zone=result.zone, origin=result.origin, extent_m=result.extent_m,
+        metric_csv=result.metric_csv, report_json=report_json)
