@@ -14,8 +14,24 @@ degrees as metres.
 
 from __future__ import annotations
 
+import csv
+import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_GPS_COLUMNS = ("timestamp_s", "latitude", "longitude", "altitude_m")
+
+#: Case-insensitive aliases accepted for each canonical GPS field, so the
+#: capture pipeline can emit timestamp, lat, lng, alt, ... without rework.
+_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "timestamp_s": ("timestamp", "timestamp_s", "time", "t", "epoch_time", "seconds"),
+    "latitude": ("latitude", "lat"),
+    "longitude": ("longitude", "lng", "lon", "long"),
+    "altitude_m": ("altitude", "altitude_m", "alt", "height", "alt_m"),
+}
 
 
 @dataclass(frozen=True)
@@ -31,3 +47,55 @@ class GPSFix:
     latitude: float
     longitude: float
     altitude_m: float
+
+
+def _resolve_columns(fieldnames: list[str]) -> dict[str, str]:
+    """Map the actual CSV header to canonical field names via aliases.
+
+    Returns a dict ``canonical -> actual-header``.  Raises ``ValueError`` when
+    any canonical field cannot be resolved or when two headers resolve to the
+    same canonical field.
+    """
+    lowered = {h.strip().lower(): h for h in fieldnames if h.strip()}
+    resolved: dict[str, str] = {}
+    for canonical, aliases in _COLUMN_ALIASES.items():
+        matches = [lowered[a] for a in aliases if a in lowered]
+        if not matches:
+            raise ValueError(
+                f"missing GPS column '{canonical}' — expected one of "
+                f"{', '.join(aliases)} in header {fieldnames}")
+        if len(matches) > 1:
+            raise ValueError(
+                f"ambiguous GPS header: multiple columns resolve to "
+                f"'{canonical}' -> {matches}")
+        resolved[canonical] = matches[0]
+    return resolved
+
+
+def read_gps_csv(path: str | Path) -> list[GPSFix]:
+    """Read and parse a GPS fix CSV into validated :class:`GPSFix` rows.
+
+    Accepts any header layout whose columns can be resolved through the
+    :data:`_COLUMN_ALIASES` table.  Validation of the numeric ranges is left
+    to :func:`validate_fixes`.
+    """
+    csv_path = Path(path)
+    if not csv_path.is_file():
+        raise FileNotFoundError(
+            f"GPS log not found: {csv_path} — run the capture pipeline first")
+    with open(csv_path, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        columns = _resolve_columns(reader.fieldnames or [])
+        fixes: list[GPSFix] = []
+        for row in reader:
+            if not any((row.get(c) or "").strip() for c in columns.values()):
+                continue
+            fixes.append(GPSFix(
+                timestamp_s=float(row[columns["timestamp_s"]]),
+                latitude=float(row[columns["latitude"]]),
+                longitude=float(row[columns["longitude"]]),
+                altitude_m=float(row[columns["altitude_m"]]),
+            ))
+    if not fixes:
+        raise ValueError(f"no GPS fixes found in {csv_path}")
+    return fixes
