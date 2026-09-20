@@ -317,6 +317,19 @@ def build_parser() -> argparse.ArgumentParser:
     vt.add_argument("--topdown", default=None, choices=["xy", "xz", "yz"],
                     help="override visualization.topdown_projection.")
     vt.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
+
+    cg = sub.add_parser("convert-gps",
+                        help="STEP 7: project the GPS log into metric "
+                             "coordinates (ENU or UTM) -> gps_metric.csv.")
+    cg.add_argument("--gps-file", default=None,
+                    help="GPS log CSV (default: gps.file from config).")
+    cg.add_argument("--output-dir", default=None,
+                    help="output dir for gps_metric.csv (default: paths.georef).")
+    cg.add_argument("--crs", default=None, choices=["auto", "enu", "utm"],
+                    help="override gps.local_crs.")
+    cg.add_argument("--utm-zone", type=int, default=None,
+                    help="override gps.utm_zone (1..60).")
+    cg.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
