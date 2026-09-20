@@ -177,3 +177,36 @@ def test_resolve_crs_explicit_modes_and_override():
     assert (crs, zone) == ("utm", 18)
     with pytest.raises(ValueError, match="local_crs"):
         resolve_crs([REF_A], "mars", 1500.0)
+
+
+def test_run_gps_conversion_writes_metric_csv_and_report(tmp_path):
+    path = write_gps_csv(tmp_path, [
+        (0.0, 47.6062, -122.3321, 100.0),
+        (0.1, 47.6062 + 9e-5, -122.3321 + 9e-5, 100.4),
+    ])
+    result = run_gps_conversion({}, gps_file=path, output_dir=tmp_path / "geo")
+
+    assert isinstance(result, GpsResult)
+    assert result.n_fixes == 2
+    assert result.crs == "enu"            # tiny flight -> ENU under auto
+    assert result.zone is None
+    assert result.origin.latitude == pytest.approx(47.6062)
+
+    csv_path = tmp_path / "geo" / "gps_metric.csv"
+    report_path = tmp_path / "reports" / "gps_report.json"
+    assert result.metric_csv.endswith("gps_metric.csv")
+    assert result.report_json.endswith("gps_report.json")
+    assert csv_path.is_file() and report_path.is_file()
+
+    header, *rows = csv_path.read_text(encoding="utf-8").splitlines()
+    assert header.split(",") == [
+        "timestamp_s", "latitude", "longitude", "altitude_m",
+        "easting_m", "northing_m", "up_m", "crs", "zone"]
+    assert rows[0] == "0.000000,47.6062,-122.3321,100.0,0.000000,0.000000,0.000000,enu,"
+    first_east = float(rows[1].split(",")[4])
+    assert 2.0 <= first_east <= 8.0
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["crs"] == "enu"
+    assert report["n_fixes"] == 2
+    assert report["datum"] == "WGS84"
