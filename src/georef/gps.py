@@ -326,3 +326,30 @@ def track_extent_m(metric: list[MetricFix]) -> float:
     dn = max(norths) - min(norths)
     du = max(ups) - min(ups)
     return math.sqrt(de * de + dn * dn + du * du)
+
+
+def resolve_crs(fixes: list[GPSFix], local_crs: str = "auto",
+                auto_crs_max_extent_m: float = 1500.0,
+                utm_zone_override: Optional[int] = None) -> tuple[str, Optional[int]]:
+    """Decide the local CRS to use for ``fixes``.
+
+    ``local_crs`` is one of ``"auto" | "enu" | "utm"``.  ``"auto"`` picks
+    ENU when the ground-track extent of the fixes stays below
+    ``auto_crs_max_extent_m`` (flat tangent plane is accurate there) and UTM
+    otherwise.  Returns ``(crs_name, utm_zone_or_None)`` where the zone is
+    given when the chosen CRS is UTM.
+    """
+    mode = (local_crs or "auto").strip().lower()
+    if mode not in ("auto", "enu", "utm"):
+        raise ValueError(
+            f"unknown local_crs {local_crs!r} — expected 'auto', 'enu' or 'utm'")
+    if mode == "enu":
+        return "enu", None
+    if mode == "utm":
+        zone = utm_zone_override if utm_zone_override is not None else utm_zone(
+            fixes[0].longitude, fixes[0].latitude)
+        return "utm", zone
+    zone = utm_zone_override if utm_zone_override is not None else utm_zone(
+        fixes[0].longitude, fixes[0].latitude)
+    extent = track_extent_m(geodetic_to_enu(fixes))
+    return ("enu", None) if extent <= auto_crs_max_extent_m else ("utm", zone)
