@@ -127,3 +127,15 @@ def test_geodetic_to_enu_direction_and_scale():
     assert -1e-3 < forward.easting_m < 1e-3       # pure north step
     assert 9.5 <= forward.northing_m <= 10.5      # 9e-5 deg lat ~ 10 m
     assert forward.up_m == pytest.approx(0.4, abs=1e-6)
+
+
+def test_utm_zone_lookup_and_epsg():
+    assert utm_zone(13.0, 52.0) == 33
+    assert utm_zone(-75.0, 40.0) == 18
+    assert utm_zone(151.2, -33.0) == 56
+    assert utm_zone(179.9, 0.0) == 60
+    assert utm_zone(-179.9, 0.0) == 1
+    assert utm_hemisphere(48.85) == "N"
+    assert utm_hemisphere(-33.0) == "S"
+    assert utm_epsg_code(33, 48.85) == 32633
+    assert utm_epsg_code(18, -40.0) == 32718
