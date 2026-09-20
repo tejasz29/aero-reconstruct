@@ -139,3 +139,13 @@ def test_utm_zone_lookup_and_epsg():
     assert utm_hemisphere(-33.0) == "S"
     assert utm_epsg_code(33, 48.85) == 32633
     assert utm_epsg_code(18, -40.0) == 32718
+
+
+def test_utm_projection_zone_and_plausible_easting():
+    fixes = [REF_A, GPSFix(1.0, 48.8583701 + 9e-5, 2.2944813, 33.4)]
+    metric, zone = geodetic_to_utm(fixes, zone=33)
+    assert zone == 33
+    assert 400000 <= metric[0].easting_m <= 600000   # central meridian offset
+    east_delta = metric[1].easting_m - metric[0].easting_m
+    assert 2.0 <= east_delta <= 8.0                  # ~6 m east step at 48.9N
+    assert metric[1].up_m == pytest.approx(0.4, abs=1e-6)
