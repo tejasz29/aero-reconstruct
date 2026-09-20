@@ -198,3 +198,30 @@ def _geodetic_to_ecef(latitude_deg: float, longitude_deg: float,
     y = (n_radius + altitude_m) * cos_lat * math.sin(lon)
     z = (n_radius * (1.0 - _WGS84_E2) + altitude_m) * sin_lat
     return x, y, z
+
+
+def _ecef_to_enu(ecef: tuple[float, float, float],
+                 origin_ecef: tuple[float, float, float],
+                 origin_latitude_deg: float,
+                 origin_longitude_deg: float) -> tuple[float, float, float]:
+    """Rotate an ECEF displacement into east-north-up metres.
+
+    The rotation is built from the tangent-plane orientation at the given
+    geodetic latitude/longitude, so ``east``/``north`` line up with
+    increasing longitude/latitude at the origin.
+    """
+    lat0 = math.radians(origin_latitude_deg)
+    lon0 = math.radians(origin_longitude_deg)
+    sin_lat, cos_lat = math.sin(lat0), math.cos(lat0)
+    sin_lon, cos_lon = math.sin(lon0), math.cos(lon0)
+    dx = ecef[0] - origin_ecef[0]
+    dy = ecef[1] - origin_ecef[1]
+    dz = ecef[2] - origin_ecef[2]
+    east = -sin_lon * dx + cos_lon * dy
+    north = (-sin_lat * cos_lon * dx
+             - sin_lat * sin_lon * dy
+             + cos_lat * dz)
+    up = (cos_lat * cos_lon * dx
+          + cos_lat * sin_lon * dy
+          + sin_lat * dz)
+    return east, north, up
