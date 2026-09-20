@@ -149,3 +149,9 @@ def test_utm_projection_zone_and_plausible_easting():
     east_delta = metric[1].easting_m - metric[0].easting_m
     assert 2.0 <= east_delta <= 8.0                  # ~6 m east step at 48.9N
     assert metric[1].up_m == pytest.approx(0.4, abs=1e-6)
+
+
+def test_track_extent_m():
+    metric = geodetic_to_enu(synthetic_flight(100))
+    extent = track_extent_m(metric)
+    assert 1180.0 <= extent <= 1230.0
