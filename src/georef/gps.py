@@ -255,3 +255,22 @@ def geodetic_to_enu(fixes: list[GPSFix],
             up_m=up,
         ))
     return metric
+
+
+def utm_zone(longitude_deg: float, latitude_deg: float) -> int:
+    """UTM zone number 1..60 for a WGS84 longitude/latitude pair."""
+    del latitude_deg
+    zone = int((longitude_deg + 180.0) // 6.0) + 1
+    return min(60, max(1, zone))
+
+
+def utm_hemisphere(latitude_deg: float) -> str:
+    """Return the UTM hemisphere letter, ``'N'`` or ``'S'``."""
+    return "N" if latitude_deg >= 0.0 else "S"
+
+
+def utm_epsg_code(zone: int, latitude_deg: float) -> int:
+    """EPSG code of a UTM zone: 326xx northern hemisphere, 327xx southern."""
+    if not 1 <= zone <= 60:
+        raise ValueError(f"UTM zone must be in 1..60, got {zone}")
+    return 32600 + zone if latitude_deg >= 0.0 else 32700 + zone
