@@ -123,3 +123,15 @@ def validate_fixes(fixes: list[GPSFix]) -> list[GPSFix]:
         joined = "; ".join(bad)
         raise ValueError(f"invalid GPS fixes ({len(bad)}): {joined}")
     return fixes
+
+
+def wgs84_distance_m(fix_a: GPSFix, fix_b: GPSFix) -> float:
+    """Great-circle surface distance between two fixes, in metres (WGS84)."""
+    from pyproj import Geod
+
+    geod = Geod(ellps="WGS84")
+    _, _, distance = geod.inv(
+        lons1=fix_a.longitude, lats1=fix_a.latitude,
+        lons2=fix_b.longitude, lats2=fix_b.latitude,
+    )
+    return abs(distance)
