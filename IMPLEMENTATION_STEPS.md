@@ -4,7 +4,7 @@ Source of truth for build order. A step is **done** only when: implemented,
 tested green, demoed on real or synthetic data, README status updated, and
 committed + pushed. Never start the next step on a broken tree.
 
-**Progress: STEPS 1–5 done (32 commits + STEP 4 + STEP 5 commits) · STEP 6 next · 65/65 tests passing.**
+**Progress: STEPS 1–6 done · STEP 7 next · 79/79 tests passing.**
 
 Conventions every step follows: tunables live in `configs/default.yaml`
 (never hard-coded); every stage logs via `src.common.logging_utils`;
@@ -164,11 +164,30 @@ OpenCV tracker used.
 
 **Commits:** STEP 5 commits listed after push (see git log).
 
-## STEP 6 — Trajectory visualisation ⬜
+## STEP 6 — Trajectory visualisation ✅ done
 
-**What:** Plot/visualise the estimated camera path to sanity-check SfM before
-burning GPU hours. **Outputs:** trajectory plot + `outputs/reports/` figures.
-**Files:** `src/sfm/visualize.py` · CLI `show-trajectory`.
+**What:** Sanity-check the STEP 5 path (continuity, orientation, rejected
+frames) before any heavy downstream step burns GPU hours.
+**Inputs:** `outputs/trajectory/camera_poses.csv` (STEP 5).
+**Outputs:** `outputs/reports/trajectory_3d.png` + `trajectory_topdown.png`
+(matplotlib, headless Agg — no display needed).
+**Algorithm:** `read_poses_csv` parses the STEP 5 CSV back into `CameraPose`s;
+`plot_trajectory` renders a 3D view (path + world-origin star + per-pose
+orientation frustums from the world->camera axes) and a 2D top-down view
+(selectable projection `xy|xz|yz` with forward-facing arrows), annotating the
+accepted/rejected summary and mean reprojection error. No accepted poses ⇒
+clear `ValueError`.
+**Files:** `src/sfm/visualize.py` · `src/cli.py` += `show-trajectory` ·
+config += `visualization.dpi`, `visualization.figsize`,
+`visualization.topdown_projection`, `visualization.draw_frustums`,
+`visualization.frustum_scale`.
+**Tests:** 79 passed (+9: pose-CSV round-trip, camera-axis convention,
+top-down projection math, headless PNG output for 5/1/0-kept and rejected-only
+poses, unknown-projection error, CLI parser).
+**Verify:** `python -m src.cli show-trajectory` (config-driven; `--poses-csv`,
+`--output-dir`, `--topdown` overrides) → inspect `outputs/reports/trajectory_*.png`.
+
+**Commits:** STEP 6 commits listed after push (see git log).
 
 ## STEP 7 — GPS parsing + metric conversion ⬜
 

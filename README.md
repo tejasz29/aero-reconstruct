@@ -80,6 +80,10 @@ python -m src.cli reconstruct-poses
                              #   bundled OpenCV tracker with a warning
                              #   outputs/trajectory/camera_poses.csv
                              #   + outputs/reports/trajectory_report.json
+python -m src.cli show-trajectory
+                             # STEP 6: plot camera_poses.csv -> 3D + top-down PNGs
+                             #   in outputs/reports/ (headless, matplotlib Agg)
+                             #   sanity-check the path before heavy steps
 ```
 
 Pipeline-stage subcommands (`preprocess`, `reconstruct`, …) are
@@ -111,6 +115,8 @@ logging (file + rotation + YAML-driven), CLI smoke tests.
 (STEP 5) SIFT/ORB extraction + matching, essential-matrix/PnP recovery on
 synthetic GT, pose chaining, runner e2e on a rendered 5-view pass, rejection
 and resume paths, backend fallback.
+(STEP 6) pose CSV round-trip, camera-axis convention, top-down projection math,
+headless PNG output incl. single-pose and rejected-only edge cases, CLI surface.
 
 ## 6. Pipeline status
 
@@ -121,8 +127,8 @@ and resume paths, backend fallback.
 | 3 | Frame quality + keyframe selection | ✅ done |
 | 4 | Camera calibration | ✅ done |
 | 5 | SfM baseline (poses) | ✅ done (classical OpenCV; COLMAP fallback) |
-| 6 | Trajectory visualisation | ⬜ next |
-| 7 | GPS parsing + metric conversion | ⬜ |
+| 6 | Trajectory visualisation | ✅ done |
+| 7 | GPS parsing + metric conversion | ⬜ next |
 | 8 | Visual ↔ GPS alignment | ⬜ |
 | 9–10 | Learned depth → 3D | ⬜ |
 | 11–12 | Fusion + filtering | ⬜ |
@@ -132,7 +138,6 @@ and resume paths, backend fallback.
 | 18–19 | Viewer + backend | ⬜ |
 | 20 | Near-real-time optimisation | ⬜ (after offline works) |
 
-**Next recommended step: STEP 6** — trajectory visualisation
-(`src/sfm/visualize.py`): plot the estimated camera path from
-`outputs/trajectory/camera_poses.csv` to sanity-check the STEP 5 poses,
-then loop back to GPS alignment (STEP 7–8) before learned depth.
+**Next recommended step: STEP 7** — GPS parsing + metric conversion
+(`src/georef/gps.py`): `timestamp,lat,lon,alt` → ENU/UTM metric
+coordinates, the input that STEP 8 uses to resolve the SfM scale.
