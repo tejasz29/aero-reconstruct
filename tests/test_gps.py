@@ -75,3 +75,18 @@ def test_read_csv_with_canonical_columns(tmp_path):
     assert len(fixes) == 2
     assert fixes[0] == GPSFix(0.0, 48.85, 2.29, 33.0)
     assert fixes[1] == GPSFix(0.1, 48.86, 2.30, 34.0)
+
+
+def test_read_csv_accepts_aliased_columns(tmp_path):
+    path = write_gps_csv(tmp_path,
+                         [(0.0, 48.85, 2.29, 33.0)],
+                         headers=("t", "lat", "lng", "alt"))
+    fixes = read_gps_csv(path)
+    assert fixes == [GPSFix(0.0, 48.85, 2.29, 33.0)]
+
+
+def test_read_csv_missing_column_raises(tmp_path):
+    path = write_gps_csv(tmp_path, [(0.0, 48.85, 2.29)],
+                         headers=("t", "lat", "lng"))
+    with pytest.raises(ValueError, match="altitude"):
+        read_gps_csv(path)
