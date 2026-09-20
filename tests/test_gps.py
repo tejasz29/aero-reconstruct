@@ -155,3 +155,25 @@ def test_track_extent_m():
     metric = geodetic_to_enu(synthetic_flight(100))
     extent = track_extent_m(metric)
     assert 1180.0 <= extent <= 1230.0
+
+
+def test_resolve_crs_auto_picks_enu_for_short_track():
+    crs, zone = resolve_crs(synthetic_flight(100), "auto", 1500.0)
+    assert crs == "enu"
+    assert zone is None
+
+
+def test_resolve_crs_auto_switches_to_utm_for_large_extent():
+    crs, zone = resolve_crs(synthetic_flight(100), "auto", 100.0)
+    assert crs == "utm"
+    assert zone == 10
+
+
+def test_resolve_crs_explicit_modes_and_override():
+    assert resolve_crs([REF_A], "enu") == ("enu", None)
+    crs, zone = resolve_crs([REF_A], "utm")
+    assert crs == "utm" and zone == 31                 # lon 2.29 -> zone 31
+    crs, zone = resolve_crs([REF_A], "utm", utm_zone_override=18)
+    assert (crs, zone) == ("utm", 18)
+    with pytest.raises(ValueError, match="local_crs"):
+        resolve_crs([REF_A], "mars", 1500.0)
