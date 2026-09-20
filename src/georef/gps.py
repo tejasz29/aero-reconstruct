@@ -50,6 +50,38 @@ class GPSFix:
     altitude_m: float
 
 
+@dataclass(frozen=True)
+class MetricFix:
+    """A GPS fix projected into a local metric frame.
+
+    ``easting_m/northing_m/up_m`` are metres in the resolved CRS (ENU tangent
+    plane or UTM).  The geodetic fields are preserved so writing the metric
+    CSV back to disk keeps full provenance.
+    """
+
+    timestamp_s: float
+    latitude: float
+    longitude: float
+    altitude_m: float
+    easting_m: float
+    northing_m: float
+    up_m: float
+
+
+@dataclass(frozen=True)
+class GpsResult:
+    """Everything produced by one :func:`run_gps_conversion` call."""
+
+    source: str
+    n_fixes: int
+    crs: str
+    zone: Optional[str]
+    origin: GPSFix
+    extent_m: float
+    metric_csv: str
+    report_json: str
+
+
 def _resolve_columns(fieldnames: list[str]) -> dict[str, str]:
     """Map the actual CSV header to canonical field names via aliases.
 
@@ -135,3 +167,12 @@ def wgs84_distance_m(fix_a: GPSFix, fix_b: GPSFix) -> float:
         lons2=fix_b.longitude, lats2=fix_b.latitude,
     )
     return abs(distance)
+
+
+def enu_origin(fixes: list[GPSFix]) -> GPSFix:
+    """Return the tangent-plane origin: the first fix of the flight.
+
+    The ENU frame is anchored at the start of the flight log so all metric
+    coordinates share a stable, interpretable reference point.
+    """
+    return fixes[0]
