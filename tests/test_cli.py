@@ -32,7 +32,7 @@ def test_doctor_fails_on_broken_layout(tmp_path, monkeypatch, capsys):
 def test_build_parser_lists_all_stage_subcommands():
     help_text = cli.build_parser().format_help()
     for subcommand in ("extract-frames", "select-keyframes", "calibrate",
-                       "reconstruct-poses"):
+                       "reconstruct-poses", "show-trajectory"):
         assert subcommand in help_text
 
 
@@ -46,3 +46,12 @@ def test_reconstruct_poses_parser_exposes_expected_flags():
     assert args.keyframes_file == "kf.csv"
     assert args.camera == "cam.yaml"
     assert args.output_dir == "out"
+
+
+def test_show_trajectory_parser_exposes_expected_flags():
+    parser = cli.build_parser()
+    args = parser.parse_args(["show-trajectory", "--poses-csv", "poses.csv",
+                              "--output-dir", "figs", "--topdown", "xz"])
+    assert args.poses_csv == "poses.csv"
+    assert args.output_dir == "figs"
+    assert args.topdown == "xz"
