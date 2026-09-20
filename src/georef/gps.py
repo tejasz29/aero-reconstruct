@@ -274,3 +274,37 @@ def utm_epsg_code(zone: int, latitude_deg: float) -> int:
     if not 1 <= zone <= 60:
         raise ValueError(f"UTM zone must be in 1..60, got {zone}")
     return 32600 + zone if latitude_deg >= 0.0 else 32700 + zone
+
+
+def geodetic_to_utm(fixes: list[GPSFix],
+                    zone: Optional[int] = None) -> tuple[list[MetricFix], int]:
+    """Project the fixes into a UTM zone via pyproj (always_xy order).
+
+    The zone defaults to the one containing the first fix; heights are kept
+    relative to the first fix's ellipsoid altitude so ``up_m`` stays
+    consistent with the ENU output.  Returns the metric fixes plus the zone
+    actually used.
+    """
+    if not fixes:
+        raise ValueError("cannot project an empty fix list")
+    from pyproj import Transformer
+
+    zone_used = zone if zone is not None else utm_zone(
+        fixes[0].longitude, fixes[0].latitude)
+    code = utm_epsg_code(zone_used, fixes[0].latitude)
+    transformer = Transformer.from_crs(
+        "EPSG:4326", f"EPSG:{code}", always_xy=True)
+    base_alt = fixes[0].altitude_m
+    metric: list[MetricFix] = []
+    for fix in fixes:
+        easting, northing = transformer.transform(fix.longitude, fix.latitude)
+        metric.append(MetricFix(
+            timestamp_s=fix.timestamp_s,
+            latitude=fix.latitude,
+            longitude=fix.longitude,
+            altitude_m=fix.altitude_m,
+            easting_m=float(easting),
+            northing_m=float(northing),
+            up_m=fix.altitude_m - base_alt,
+        ))
+    return metric, zone_used
