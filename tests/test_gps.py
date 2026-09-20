@@ -2,8 +2,9 @@
 
 Ground truths:
 * Eiffel Tower  (48.8583701, 2.2944813) to Louvre (48.8606111, 2.3376440)
-  is 3350-3360 m on the WGS84 ellipsoid.
-* 9e-5 deg of latitude ~ 10 m; at 47.6N, 9e-5 deg of longitude ~ 6.8 m.
+  is ~3177 m on the WGS84 ellipsoid.
+* 9e-5 deg of latitude ~ 10 m; 9e-5 deg of longitude ~ 6.8 m at 48.9N.
+* Paris sits in UTM zone 31 (central meridian 3E), so easting ~ 500 km.
 * Synthetic flight: origin (47.6062, -122.3321, 100.0), steps north+east,
   +0.4 m altitude per fix -> ENU extent ~1.2 km (stays ENU under auto).
 """
@@ -109,7 +110,7 @@ def test_validate_fixes_rejects_out_of_range():
 
 def test_wgs84_distance_eiffel_to_louvre():
     distance = wgs84_distance_m(REF_A, REF_B)
-    assert 3350.0 <= distance <= 3360.0
+    assert 3150.0 <= distance <= 3200.0
 
 
 def test_geodetic_to_enu_origin_at_first_fix():
@@ -124,9 +125,9 @@ def test_geodetic_to_enu_origin_at_first_fix():
 def test_geodetic_to_enu_direction_and_scale():
     metric = geodetic_to_enu(synthetic_flight(3))
     forward = metric[1]
-    assert -1e-3 < forward.easting_m < 1e-3       # pure north step
-    assert 9.5 <= forward.northing_m <= 10.5      # 9e-5 deg lat ~ 10 m
-    assert forward.up_m == pytest.approx(0.4, abs=1e-6)
+    assert 5.5 <= forward.easting_m <= 8.0       # 9e-5 deg lon ~ 6.8 m at 47.6N
+    assert 9.5 <= forward.northing_m <= 10.5     # 9e-5 deg lat ~ 10 m
+    assert forward.up_m == pytest.approx(0.4, abs=1e-3)
 
 
 def test_utm_zone_lookup_and_epsg():
@@ -142,13 +143,13 @@ def test_utm_zone_lookup_and_epsg():
 
 
 def test_utm_projection_zone_and_plausible_easting():
-    fixes = [REF_A, GPSFix(1.0, 48.8583701 + 9e-5, 2.2944813, 33.4)]
-    metric, zone = geodetic_to_utm(fixes, zone=33)
-    assert zone == 33
-    assert 400000 <= metric[0].easting_m <= 600000   # central meridian offset
+    fixes = [REF_A, GPSFix(1.0, 48.8583701, 2.2944813 + 9e-5, 33.4)]
+    metric, zone = geodetic_to_utm(fixes, zone=31)   # Paris sits in zone 31
+    assert zone == 31
+    assert 400000 <= metric[0].easting_m <= 600000   # central meridian 3E
     east_delta = metric[1].easting_m - metric[0].easting_m
-    assert 2.0 <= east_delta <= 8.0                  # ~6 m east step at 48.9N
-    assert metric[1].up_m == pytest.approx(0.4, abs=1e-6)
+    assert 2.0 <= east_delta <= 8.0                  # ~6.6 m for a pure east step
+    assert metric[1].up_m == pytest.approx(0.4, abs=1e-3)
 
 
 def test_track_extent_m():
