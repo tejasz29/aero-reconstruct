@@ -134,3 +134,13 @@ def rmse_m(errors: np.ndarray) -> float | None:
     """Root-mean-square of per-point errors; None when empty."""
     err = np.asarray(errors, dtype=np.float64).ravel()
     return float(np.sqrt((err ** 2).mean())) if err.size else None
+
+
+def is_valid_rotation(R: np.ndarray, tol: float = 1e-6) -> bool:
+    """Check orthonormality (R @ R.T ~= I) and det(R) ~= +1."""
+    R = np.asarray(R, dtype=np.float64)
+    if R.shape != (3, 3):
+        return False
+    if abs(float(np.linalg.det(R)) - 1.0) > 1e-4:
+        return False
+    return bool(np.allclose(R @ R.T, np.eye(3), atol=tol))
