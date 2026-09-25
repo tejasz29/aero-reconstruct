@@ -226,3 +226,21 @@ def interpolate_metric_to_visual(
     if not kept:
         raise ValueError("no timestamp overlap between visual and GPS trajectories")
     return np.asarray(src_list), np.asarray(dst_list), kept
+
+
+def build_correspondences(poses_csv, gps_metric_csv,
+                          min_correspondences: int = 6
+                          ) -> tuple[np.ndarray, np.ndarray, list[VisualSample], str, str | None]:
+    """Full STEP 5 + STEP 7 -> (src, dst) correspondence builder.
+
+    Raises ``ValueError`` when fewer than ``min_correspondences`` pairs
+    survive timestamp overlap.
+    """
+    visual = read_visual_trajectory(poses_csv)
+    metric, crs, zone = read_metric_trajectory(gps_metric_csv)
+    src, dst, kept = interpolate_metric_to_visual(visual, metric)
+    if len(kept) < min_correspondences:
+        raise ValueError(
+            f"only {len(kept)} visual<->GPS correspondences "
+            f"(need >= {min_correspondences}) — check timestamp overlap")
+    return src, dst, kept, crs, zone
