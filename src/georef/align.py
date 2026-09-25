@@ -386,3 +386,77 @@ def write_alignment_report(path, result: AlignmentResult,
     }
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return str(out.resolve())
+
+
+def run_alignment(cfg: dict, poses_csv=None, gps_metric_csv=None,
+                  output_dir=None, iterations_override: int | None = None,
+                  threshold_override: float | None = None) -> AlignmentResult:
+    """STEP 8 entry point: fit similarity + write aligned outputs.
+
+    Reads ``alignment.ransac_iterations``, ``alignment.inlier_threshold_m``,
+    ``alignment.min_correspondences`` from ``cfg`` (overridable). Writes
+    ``outputs/georef/aligned_trajectory.csv``,
+    ``outputs/georef/similarity_transform.json`` and
+    ``outputs/reports/alignment_report.json``.
+    """
+    from pathlib import Path
+
+    from src.common.config_loader import get
+    from src.common.paths import PROJECT_ROOT
+
+    traj_default = Path(get(cfg, "paths.trajectory", "outputs/trajectory"))
+    poses_path = Path(poses_csv) if poses_csv else traj_default / "camera_poses.csv"
+    if not poses_path.is_absolute():
+        poses_path = PROJECT_ROOT / poses_path
+    georef_default = Path(get(cfg, "paths.georef", "outputs/georef"))
+    gps_path = (Path(gps_metric_csv) if gps_metric_csv
+                else georef_default / "gps_metric.csv")
+    if not gps_path.is_absolute():
+        gps_path = PROJECT_ROOT / gps_path
+
+    iterations = (int(iterations_override) if iterations_override is not None
+                  else int(get(cfg, "alignment.ransac_iterations", 1000)))
+    threshold = (float(threshold_override) if threshold_override is not None
+                 else float(get(cfg, "alignment.inlier_threshold_m", 2.0)))
+    min_corr = int(get(cfg, "alignment.min_correspondences", 6))
+    seed = int(get(cfg, "project.seed", 42))
+
+    src, dst, kept, crs, zone = build_correspondences(
+        poses_path, gps_path, min_correspondences=min_corr)
+    transform, inliers = ransac_similarity(
+        src, dst, iterations=iterations, inlier_threshold_m=threshold,
+        min_correspondences=min_corr, seed=seed)
+    residuals = compute_residuals_m(src, dst, transform)
+    aligned = apply_similarity(src, transform)
+
+    out_dir = Path(output_dir) if output_dir else georef_default
+    if not out_dir.is_absolute():
+        out_dir = PROJECT_ROOT / out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    aligned_csv = write_aligned_csv(out_dir / "aligned_trajectory.csv", kept,
+                                    aligned, dst, residuals, inliers)
+    transform_json = write_transform_json(
+        out_dir / "similarity_transform.json", transform, crs, zone)
+
+    rmse_all = rmse_m(residuals)
+    rmse_in = rmse_m(residuals[inliers]) if int(inliers.sum()) else None
+    result = AlignmentResult(
+        transform=transform, n_correspondences=len(kept),
+        n_inliers=int(inliers.sum()), rmse_inliers_m=rmse_in,
+        rmse_all_m=rmse_all,
+        inlier_ratio=float(inliers.sum()) / max(len(kept), 1),
+        crs=crs, zone=zone, aligned_csv=aligned_csv,
+        transform_json=transform_json, report_json="")
+
+    report_dir = Path(get(cfg, "paths.reports", "outputs/reports"))
+    if not report_dir.is_absolute():
+        report_dir = PROJECT_ROOT / report_dir
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_json = write_alignment_report(
+        report_dir / "alignment_report.json", result, threshold, iterations)
+    result.report_json = report_json
+    log.info("alignment: %d correspondences -> %d inliers "
+             "(scale %.4f, rmse_in %.3f m, crs=%s)",
+             result.n_correspondences, result.n_inliers,
+             transform.scale, rmse_in or -1.0, crs)
+    return result
