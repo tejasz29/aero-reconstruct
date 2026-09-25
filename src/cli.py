@@ -265,6 +265,27 @@ def cmd_show_trajectory(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_align_trajectory(args: argparse.Namespace) -> int:
+    """STEP 8 — fit visual<->GPS similarity + write aligned trajectory."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    result = run_alignment(
+        cfg, poses_csv=args.poses_csv, gps_metric_csv=args.gps_metric_csv,
+        output_dir=args.output_dir,
+        iterations_override=args.iterations,
+        threshold_override=args.threshold)
+    print(f"correspondences: {result.n_correspondences} "
+          f"(inliers={result.n_inliers})")
+    print(f"scale   : {result.transform.scale:.6f}")
+    print(f"trans   : [{', '.join(f'{v:.3f}' for v in result.transform.t)}]")
+    print(f"rmse_in : {result.rmse_inliers_m:.3f} m"
+          if result.rmse_inliers_m is not None else "rmse_in : -")
+    print(f"output  : {result.aligned_csv}")
+    print(f"report  : {result.report_json}")
+    return 0
+
+
 def cmd_convert_gps(args: argparse.Namespace) -> int:
     """STEP 7 — project the GPS log into metric coordinates + report."""
     from pathlib import Path
