@@ -53,3 +53,28 @@ class MetricSample:
     def __init__(self, timestamp_s: float, position: np.ndarray):
         self.timestamp_s = float(timestamp_s)
         self.position = np.asarray(position, dtype=np.float64).reshape(3)
+
+
+class AlignmentResult:
+    """Everything produced by one :func:`run_alignment` call."""
+
+    def __init__(self, transform: SimilarityTransform,
+                 n_correspondences: int = 0,
+                 n_inliers: int = 0,
+                 rmse_inliers_m: float | None = None,
+                 rmse_all_m: float | None = None,
+                 inlier_ratio: float = 0.0,
+                 crs: str = "", zone: str | None = None,
+                 aligned_csv: str = "", transform_json: str = "",
+                 report_json: str = ""):
+        self.transform = transform
+        self.n_correspondences = int(n_correspondences)
+        self.n_inliers = int(n_inliers)
+        self.rmse_inliers_m = rmse_inliers_m
+        self.rmse_all_m = rmse_all_m
+        self.inlier_ratio = float(inlier_ratio)
+        self.crs = str(crs)
+        self.zone = zone
+        self.aligned_csv = str(aligned_csv)
+        self.transform_json = str(transform_json)
+        self.report_json = str(report_json)
