@@ -34,3 +34,22 @@ class SimilarityTransform:
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return (f"SimilarityTransform(scale={self.scale:.6f}, "
                 f"t={self.t.tolist()})")
+
+
+class VisualSample:
+    """One kept SfM camera centre with its timestamp."""
+
+    def __init__(self, timestamp_s: float, position: np.ndarray,
+                 frame_id: int = 0, filename: str = ""):
+        self.timestamp_s = float(timestamp_s)
+        self.position = np.asarray(position, dtype=np.float64).reshape(3)
+        self.frame_id = int(frame_id)
+        self.filename = str(filename)
+
+
+class MetricSample:
+    """One GPS metric position (easting, northing, up) with timestamp."""
+
+    def __init__(self, timestamp_s: float, position: np.ndarray):
+        self.timestamp_s = float(timestamp_s)
+        self.position = np.asarray(position, dtype=np.float64).reshape(3)
