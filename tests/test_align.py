@@ -35,8 +35,7 @@ def test_umeyama_recovers_known_similarity():
     src = _visual_cloud()
     dst = apply_similarity(src, gt)
     est = estimate_similarity_umeyama(src, dst)
-    assert est.scale == float(np.testing.assert_allclose(est.scale, 2.5, rtol=1e-6) or 2.5) \
-        if False else abs(est.scale - 2.5) / 2.5 < 0.01
+    assert abs(est.scale - 2.5) / 2.5 < 0.01
     np.testing.assert_allclose(est.R, gt.R, atol=1e-6)
     np.testing.assert_allclose(est.t, gt.t, atol=1e-6)
 
