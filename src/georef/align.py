@@ -286,3 +286,16 @@ def ransac_similarity(src: np.ndarray, dst: np.ndarray,
     else:
         best = estimate_similarity_umeyama(src[best_inliers], dst[best_inliers])
     return best, np.asarray(best_inliers, dtype=bool)
+
+
+def align_camera_centres(centres: np.ndarray,
+                         transform: SimilarityTransform) -> np.ndarray:
+    """Apply the fitted similarity to every SfM camera centre."""
+    return apply_similarity(centres, transform)
+
+
+def align_camera_rotation(R_wc: np.ndarray,
+                          transform: SimilarityTransform) -> np.ndarray:
+    """Rotate a world->camera rotation into the global frame: R_wc @ R.T."""
+    R_wc = np.asarray(R_wc, dtype=np.float64).reshape(3, 3)
+    return R_wc @ transform.R.T
