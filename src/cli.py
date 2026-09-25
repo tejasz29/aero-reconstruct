@@ -42,6 +42,7 @@ from src.common.config_loader import get, load_config
 from src.common.logging_utils import get_logger, setup_logging
 from src.common.paths import PROJECT_ROOT, project_paths
 from src.calibration.runner import resolve_calibration
+from src.georef.align import run_alignment
 from src.georef.gps import run_gps_conversion
 from src.sfm.runner import run_reconstruction
 from src.sfm.visualize import plot_trajectory, read_poses_csv
