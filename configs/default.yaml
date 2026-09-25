@@ -23,6 +23,7 @@ paths:
   outputs: "outputs"
   reports: "outputs/reports"       # per-step reports / audit artefacts
   trajectory: "outputs/trajectory" # STEP 5 camera poses
+  georef: "outputs/georef"         # STEP 7/8 metric + aligned trajectory
 
 # --- STEP 2/3: video preprocessing + keyframe selection ---
 video:
