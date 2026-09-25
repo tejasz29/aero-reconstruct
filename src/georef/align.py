@@ -197,3 +197,32 @@ def read_metric_trajectory(gps_metric_csv) -> tuple[list[MetricSample], str, str
     if not samples:
         raise ValueError(f"no metric fixes in {path}")
     return samples, crs, zone
+
+
+def interpolate_metric_to_visual(
+        visual: list[VisualSample],
+        metric: list[MetricSample]) -> tuple[np.ndarray, np.ndarray, list[VisualSample]]:
+    """Linearly interpolate GPS metric positions onto visual timestamps.
+
+    Visual timestamps outside the GPS span are dropped (no extrapolation —
+    claiming scale where no GPS exists would be dishonest). Returns
+    ``(src, dst, kept_visual)`` with (N, 3) arrays.
+    """
+    if not visual or not metric:
+        raise ValueError("need non-empty visual and metric trajectories")
+    g_times = np.array([m.timestamp_s for m in metric], dtype=np.float64)
+    g_pos = np.array([m.position for m in metric], dtype=np.float64)
+    order = np.argsort(g_times)
+    g_times, g_pos = g_times[order], g_pos[order]
+    src_list, dst_list, kept = [], [], []
+    for v in visual:
+        if not (g_times[0] <= v.timestamp_s <= g_times[-1]):
+            continue
+        interp = np.array([np.interp(v.timestamp_s, g_times, g_pos[:, k])
+                           for k in range(3)], dtype=np.float64)
+        src_list.append(v.position)
+        dst_list.append(interp)
+        kept.append(v)
+    if not kept:
+        raise ValueError("no timestamp overlap between visual and GPS trajectories")
+    return np.asarray(src_list), np.asarray(dst_list), kept
