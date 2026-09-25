@@ -12,6 +12,25 @@ are honoured via ``alignment.use_rtk_if_available`` (tighter inliers).
 
 from __future__ import annotations
 
+import numpy as np
+
 from src.common.logging_utils import get_logger
 
 log = get_logger("sp3d.georef.align")
+
+
+class SimilarityTransform:
+    """Scale-rotation-translation map: X_global = s * R @ X_visual + t."""
+
+    def __init__(self, scale: float = 1.0,
+                 rotation: np.ndarray | None = None,
+                 translation: np.ndarray | None = None):
+        self.scale = float(scale)
+        self.R = np.eye(3) if rotation is None else np.asarray(
+            rotation, dtype=np.float64).reshape(3, 3)
+        self.t = np.zeros(3) if translation is None else np.asarray(
+            translation, dtype=np.float64).reshape(3)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return (f"SimilarityTransform(scale={self.scale:.6f}, "
+                f"t={self.t.tolist()})")
