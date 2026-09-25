@@ -27,6 +27,8 @@ or, after ``pip install -e .``::
   figures under outputs/reports/ (sanity-check before heavy steps).
 * ``convert-gps`` — STEP 7: project the GPS log into metric coordinates
   (ENU or UTM) -> outputs/georef/gps_metric.csv + report.
+* ``align-trajectory`` — STEP 8: robust similarity X_g = s·R·X_v + t over
+  camera_poses.csv + gps_metric.csv -> aligned_trajectory.csv + report.
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """
@@ -408,7 +410,8 @@ def main(argv: list[str] | None = None) -> int:
                 "calibrate": cmd_calibrate,
                 "reconstruct-poses": cmd_reconstruct_poses,
                 "show-trajectory": cmd_show_trajectory,
-                "convert-gps": cmd_convert_gps}
+                "convert-gps": cmd_convert_gps,
+                "align-trajectory": cmd_align_trajectory}
     return handlers[args.command](args)
 
 
