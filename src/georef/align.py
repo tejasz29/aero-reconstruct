@@ -114,3 +114,23 @@ def estimate_similarity_umeyama(src: np.ndarray, dst: np.ndarray,
         scale = 1.0
     t = mu_dst - scale * R @ mu_src
     return SimilarityTransform(scale=scale, rotation=R, translation=t)
+
+
+def apply_similarity(points: np.ndarray,
+                     transform: SimilarityTransform) -> np.ndarray:
+    """Map visual points into the global frame: ``s * R @ X + t``."""
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    return transform.scale * (pts @ transform.R.T) + transform.t
+
+
+def compute_residuals_m(src: np.ndarray, dst: np.ndarray,
+                        transform: SimilarityTransform) -> np.ndarray:
+    """Per-correspondence Euclidean error in metres."""
+    pred = apply_similarity(src, transform)
+    return np.linalg.norm(np.asarray(dst, dtype=np.float64) - pred, axis=1)
+
+
+def rmse_m(errors: np.ndarray) -> float | None:
+    """Root-mean-square of per-point errors; None when empty."""
+    err = np.asarray(errors, dtype=np.float64).ravel()
+    return float(np.sqrt((err ** 2).mean())) if err.size else None
