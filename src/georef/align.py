@@ -244,3 +244,45 @@ def build_correspondences(poses_csv, gps_metric_csv,
             f"only {len(kept)} visual<->GPS correspondences "
             f"(need >= {min_correspondences}) — check timestamp overlap")
     return src, dst, kept, crs, zone
+
+
+def ransac_similarity(src: np.ndarray, dst: np.ndarray,
+                      iterations: int = 1000,
+                      inlier_threshold_m: float = 2.0,
+                      min_correspondences: int = 6,
+                      seed: int = 42) -> tuple[SimilarityTransform, np.ndarray]:
+    """Robust similarity via RANSAC + least-squares refinement on inliers.
+
+    Minimal set is 3 non-collinear points. Returns ``(best_transform,
+    inlier_mask)``; refinement re-fits Umeyama on all inliers.
+    """
+    src = np.asarray(src, dtype=np.float64).reshape(-1, 3)
+    dst = np.asarray(dst, dtype=np.float64).reshape(-1, 3)
+    n = len(src)
+    if n < min_correspondences:
+        raise ValueError(f"need >= {min_correspondences} correspondences, got {n}")
+    rng = np.random.default_rng(seed)
+    best_inliers = np.zeros(n, dtype=bool)
+    best_count = 0
+    for _ in range(int(iterations)):
+        idx = rng.choice(n, size=3, replace=False)
+        try:
+            candidate = estimate_similarity_umeyama(src[idx], dst[idx])
+        except ValueError:
+            continue
+        errors = compute_residuals_m(src, dst, candidate)
+        inliers = errors <= float(inlier_threshold_m)
+        count = int(inliers.sum())
+        if count > best_count:
+            best_count = count
+            best_inliers = inliers
+            if best_count == n:
+                break
+    if best_count < 3:
+        # Fall back to a direct fit so degenerate-but-clean tracks still work.
+        best = estimate_similarity_umeyama(src, dst)
+        errors = compute_residuals_m(src, dst, best)
+        best_inliers = errors <= float(inlier_threshold_m)
+    else:
+        best = estimate_similarity_umeyama(src[best_inliers], dst[best_inliers])
+    return best, np.asarray(best_inliers, dtype=bool)
