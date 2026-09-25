@@ -420,6 +420,10 @@ def run_alignment(cfg: dict, poses_csv=None, gps_metric_csv=None,
                  else float(get(cfg, "alignment.inlier_threshold_m", 2.0)))
     min_corr = int(get(cfg, "alignment.min_correspondences", 6))
     seed = int(get(cfg, "project.seed", 42))
+    use_rtk = bool(get(cfg, "alignment.use_rtk_if_available", True))
+    if use_rtk:
+        log.info("RTK/PPK path enabled when high-accuracy fixes are present; "
+                 "otherwise ordinary-GPS threshold (%.2f m) applies", threshold)
 
     src, dst, kept, crs, zone = build_correspondences(
         poses_path, gps_path, min_correspondences=min_corr)
