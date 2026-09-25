@@ -173,3 +173,27 @@ def read_visual_trajectory(poses_csv) -> list[VisualSample]:
     if not samples:
         raise ValueError(f"no kept poses in {path}")
     return samples
+
+
+def read_metric_trajectory(gps_metric_csv) -> tuple[list[MetricSample], str, str | None]:
+    """Parse STEP 7 ``gps_metric.csv`` into timestamped metric positions."""
+    import csv
+    from pathlib import Path
+
+    path = Path(gps_metric_csv)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"gps metric file not found: {path} — run convert-gps first")
+    samples: list[MetricSample] = []
+    crs, zone = "enu", None
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            pos = np.array([float(row["easting_m"]), float(row["northing_m"]),
+                            float(row["up_m"])], dtype=np.float64)
+            samples.append(MetricSample(float(row["timestamp_s"]), pos))
+            crs = str(row.get("crs") or crs)
+            zone = str(row.get("zone") or "") or None
+    samples.sort(key=lambda s: s.timestamp_s)
+    if not samples:
+        raise ValueError(f"no metric fixes in {path}")
+    return samples, crs, zone
