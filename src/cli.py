@@ -381,6 +381,21 @@ def build_parser() -> argparse.ArgumentParser:
     cg.add_argument("--utm-zone", type=int, default=None,
                     help="override gps.utm_zone (1..60).")
     cg.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
+
+    al = sub.add_parser("align-trajectory",
+                        help="STEP 8: fit visual<->GPS similarity "
+                             "X_g = s*R*X_v + t -> aligned_trajectory.csv.")
+    al.add_argument("--poses-csv", default=None,
+                    help="camera_poses.csv (default: <paths.trajectory>/...).")
+    al.add_argument("--gps-metric-csv", default=None,
+                    help="gps_metric.csv (default: <paths.georef>/...).")
+    al.add_argument("--output-dir", default=None,
+                    help="output dir for aligned_trajectory.csv (default: paths.georef).")
+    al.add_argument("--iterations", type=int, default=None,
+                    help="override alignment.ransac_iterations.")
+    al.add_argument("--threshold", type=float, default=None,
+                    help="override alignment.inlier_threshold_m.")
+    al.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
