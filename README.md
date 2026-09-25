@@ -84,6 +84,13 @@ python -m src.cli show-trajectory
                              # STEP 6: plot camera_poses.csv -> 3D + top-down PNGs
                              #   in outputs/reports/ (headless, matplotlib Agg)
                              #   sanity-check the path before heavy steps
+python -m src.cli convert-gps
+                             # STEP 7: GPS log -> outputs/georef/gps_metric.csv
+                             #   + outputs/reports/gps_report.json (ENU/UTM)
+python -m src.cli align-trajectory
+                             # STEP 8: X_g = s*R*X_v + t over camera_poses.csv
+                             #   + gps_metric.csv -> aligned_trajectory.csv
+                             #   + similarity_transform.json + alignment_report.json
 ```
 
 Pipeline-stage subcommands (`preprocess`, `reconstruct`, …) are
@@ -131,7 +138,7 @@ distance ground truth, ENU/UTM conversions, CRS auto-resolution, runner e2e.
 | 5 | SfM baseline (poses) | ✅ done (classical OpenCV; COLMAP fallback) |
 | 6 | Trajectory visualisation | ✅ done |
 | 7 | GPS parsing + metric conversion | ✅ done |
-| 8 | Visual ↔ GPS alignment | ⬜ next |
+| 8 | Visual ↔ GPS alignment | ✅ done (Umeyama+RANSAC, `align-trajectory`) |
 | 9–10 | Learned depth → 3D | ⬜ |
 | 11–12 | Fusion + filtering | ⬜ |
 | 13 | Dynamic-object segmentation | ⬜ |
