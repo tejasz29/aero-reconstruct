@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.env
+
+# Testing / lint
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Never commit raw captures, weights, or generated artefacts
+# (directory skeletons are kept via .gitkeep files)
+data/raw_videos/*
+!data/raw_videos/.gitkeep
+data/frames/*
+!data/frames/.gitkeep
+data/gps/*
+!data/gps/.gitkeep
+data/imu/*
+!data/imu/.gitkeep
+models/depth/*
+!models/depth/.gitkeep
+models/segmentation/*
+!models/segmentation/.gitkeep
+outputs/**/*
+!outputs/*/
+!outputs/*/.gitkeep
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

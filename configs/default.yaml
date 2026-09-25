@@ -1,0 +1,152 @@
+# ============================================================
+# single-pass-3d — master pipeline configuration (offline MVP)
+# Keep ALL tunable values here. Do NOT hard-code them in src/.
+# Stages not yet implemented still get their section now so that
+# later steps only fill in code, never restructure config.
+# Load with:  src.common.config_loader.load_config()
+# ============================================================
+
+project:
+  name: "single-pass-3d"
+  version: "0.1.0"
+  seed: 42
+
+paths:
+  raw_videos: "data/raw_videos"
+  frames: "data/frames"
+  gps: "data/gps"
+  imu: "data/imu"
+  reference: "data/reference"
+  calibration: "calibration"
+  models_depth: "models/depth"
+  models_segmentation: "models/segmentation"
+  outputs: "outputs"
+  reports: "outputs/reports"       # per-step reports / audit artefacts
+  trajectory: "outputs/trajectory" # STEP 5 camera poses
+
+# --- STEP 2/3: video preprocessing + keyframe selection ---
+video:
+  target_fps: 2.0            # max frames/sec to extract; higher = denser but slower
+  max_frames: 2000
+  image_max_width: 1920      # downscale wider frames (speed vs detail trade-off)
+  output_format: "jpg"       # jpg | png
+  jpeg_quality: 95
+  quality:
+    detector: "orb"          # orb (fast) | sift (slower, denser)
+    blur_threshold: 100.0    # Laplacian variance below this = blurry, reject
+    min_exposure_mean: 15.0  # mean gray below this = too dark, reject
+    max_exposure_mean: 240.0 # mean gray above this = saturated, reject
+    min_features: 300        # frames with fewer good features are rejected
+  keyframes:
+    min_time_gap_s: 0.5
+    dedup_hamming_threshold: 5  # dHash bits; lower = stricter duplicate removal
+    min_translation_m: 1.0   # approx., enforced from STEP 8 (needs metric scale)
+    max_keep: 600
+
+# --- STEP 4: camera calibration ---
+calibration:
+  source: "provided"          # provided | checkerboard | charuco
+  file: "calibration/camera.yaml"      # canonical output model
+  provided_file: "calibration/camera_provided.yaml"  # used when source=provided
+  images_dir: "calibration/images"     # used when source=checkerboard|charuco
+  # checkerboard: (cols, rows) = OpenCV inner-corner count per row/column
+  # (classic 9x6 board -> cols: 9, rows: 6). square_size_m is one square edge.
+  checkerboard: { rows: 6, cols: 9, square_size_m: 0.025 }
+  charuco: { rows: 5, cols: 7, square_size_m: 0.04, marker_size_m: 0.02 }
+  validation:
+    max_reprojection_error_px: 1.0    # RMS above this => flagged "CHECK" in report
+
+# --- STEP 5: SfM / pose estimation ---
+# Backend "colmap" is the long-term baseline; this MVP ships and runs the
+# bundled classical OpenCV tracker and falls back to it with a warning when
+# the COLMAP binary is not on PATH.
+sfm:
+  backend: "colmap"          # colmap (once installed) | opencv (bundled tracker)
+  feature: "sift"            # sift | orb
+  max_features: 8000
+  matcher_ratio_test: 0.8
+  ransac_reproj_threshold_px: 4.0
+  max_reprojection_error_px: 2.0   # poses worse than this are rejected
+  min_inliers: 20                  # RANSAC inliers needed to accept a pair
+  min_parallax_px: 3.0             # median inlier displacement; below = no baseline
+
+# --- STEP 6: trajectory visualisation ---
+# Sanity-check the STEP 5 path before heavy downstream steps. PNGs go under
+# paths.reports; matplotlib runs headless (Agg) — no display needed.
+visualization:
+  dpi: 150
+  figsize: [10, 8]
+  topdown_projection: "xy"    # xy | xz | yz  (world axes shown on the 2D plot)
+  draw_frustums: true         # per-pose camera orientation pyramids (3D view)
+  frustum_scale: 0.2          # frustum size relative to the world units
+
+# --- STEP 7: GPS metric conversion ---
+gps:
+  file: "data/gps/gps.csv"     # capture-pipeline GPS log (STEP 2)
+  local_crs: "auto"            # auto | enu | utm  (auto: ENU for short tracks, UTM otherwise)
+  auto_crs_max_extent_m: 1500.0  # ground-track extent above which auto switches to UTM
+  utm_zone: "auto"             # auto | <zone int 1..60>
+
+# --- STEP 8: visual <-> GPS similarity alignment  Xg = s*R*Xv + t ---
+alignment:
+  ransac_iterations: 1000
+  inlier_threshold_m: 2.0
+  min_correspondences: 6
+  use_rtk_if_available: true
+
+# --- STEP 9: learned monocular depth ---
+depth:
+  model: "depth-anything-v2" # HF model id / local ckpt under models/depth
+  device: "auto"             # auto | cuda | cpu
+  input_size: 518
+  store_confidence: true
+  metric_constraint: "gps_scale"  # monocular depth is NOT metric by itself
+
+# --- STEP 13: dynamic-object segmentation (runs BEFORE fusion) ---
+segmentation:
+  model: "yolo-seg"          # yolo-seg | sam2
+  device: "auto"
+  mask_classes: ["person", "car", "truck", "bus", "motorcycle", "bicycle"]
+  confidence: 0.35
+
+# --- STEP 10/12: fusion + filtering ---
+fusion:
+  voxel_size_m: 0.10
+  statistical_nb_neighbors: 20
+  statistical_std_ratio: 2.0
+  radius_nb_points: 8
+  radius_m: 0.30
+  estimate_normals: true
+
+# --- STEP 14: meshing (Open3D Poisson baseline) ---
+mesh:
+  method: "poisson"
+  poisson_depth: 9
+  density_quantile_cutoff: 0.05  # drop low-density verts; keep gaps, don't invent geometry
+  formats: ["ply", "obj", "glb"]
+
+# --- STEP 15: texture mapping ---
+texture:
+  prefer: ["sharpness", "angle", "distance", "exposure"]
+  blend_overlaps: true
+
+# --- STEP 16: georeferencing ---
+georef:
+  output_crs: "auto"         # auto | enu | utm:<zone>
+  write_world_file: true
+  dsm_resolution_m: 0.25
+
+# --- STEP 17: evaluation ---
+evaluation:
+  reference_dir: "data/reference"
+  completeness_voxel_m: 0.25
+  report_formats: ["json", "csv", "md"]
+
+# --- STEP 19: backend ---
+api:
+  host: "127.0.0.1"
+  port: 8000
+
+runtime:
+  num_workers: 4
+  log_level: "INFO"

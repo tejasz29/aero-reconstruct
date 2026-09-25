@@ -1,0 +1,17 @@
+# Camera intrinsics for the drone camera.
+# If the vendor provides intrinsics, fill them in here (source: provided).
+# Otherwise run the checkerboard/Charuco calibrator (STEP 4) which will
+# overwrite this file. K = [[fx,0,cx],[0,fy,cy],[0,0,1]].
+# All focal lengths / principal-point values are in PIXELS.
+camera:
+  source: "placeholder"   # placeholder | provided | checkerboard | charuco
+  image_width: null
+  image_height: null
+  fx: null
+  fy: null
+  cx: null
+  cy: null
+  # OpenCV distortion model (k1, k2, p1, p2, k3); all zeros = no distortion.
+  distortion: [0.0, 0.0, 0.0, 0.0, 0.0]
+  reprojection_error_px: null
+  calibrated_on: null
