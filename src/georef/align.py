@@ -78,3 +78,39 @@ class AlignmentResult:
         self.aligned_csv = str(aligned_csv)
         self.transform_json = str(transform_json)
         self.report_json = str(report_json)
+
+
+def estimate_similarity_umeyama(src: np.ndarray, dst: np.ndarray,
+                                with_scale: bool = True) -> SimilarityTransform:
+    """Least-squares similarity ``dst ~= s * R @ src + t`` (Umeyama 1991).
+
+    Args:
+        src: (N, 3) visual positions.  dst: (N, 3) metric positions.
+    Raises:
+        ValueError: fewer than 3 points or degenerate (zero-variance) input.
+    """
+    src = np.asarray(src, dtype=np.float64).reshape(-1, 3)
+    dst = np.asarray(dst, dtype=np.float64).reshape(-1, 3)
+    if src.shape != dst.shape or src.shape[0] < 3:
+        raise ValueError(
+            f"need >=3 correspondences with matching shapes, got "
+            f"{src.shape} vs {dst.shape}")
+    mu_src = src.mean(axis=0)
+    mu_dst = dst.mean(axis=0)
+    src_c = src - mu_src
+    dst_c = dst - mu_dst
+    var_src = float((src_c ** 2).sum() / len(src))
+    if var_src < 1e-12:
+        raise ValueError("degenerate visual configuration: zero variance")
+    cov = (dst_c.T @ src_c) / len(src)
+    u, d, vt = np.linalg.svd(cov)
+    s_mat = np.eye(3)
+    if np.linalg.det(u) * np.linalg.det(vt) < 0:
+        s_mat[2, 2] = -1.0
+    R = u @ s_mat @ vt
+    if with_scale:
+        scale = float((d * np.diag(s_mat)).sum() / var_src)
+    else:
+        scale = 1.0
+    t = mu_dst - scale * R @ mu_src
+    return SimilarityTransform(scale=scale, rotation=R, translation=t)
