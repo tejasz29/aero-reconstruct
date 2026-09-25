@@ -144,3 +144,32 @@ def is_valid_rotation(R: np.ndarray, tol: float = 1e-6) -> bool:
     if abs(float(np.linalg.det(R)) - 1.0) > 1e-4:
         return False
     return bool(np.allclose(R @ R.T, np.eye(3), atol=tol))
+
+
+def read_visual_trajectory(poses_csv) -> list[VisualSample]:
+    """Parse kept STEP 5 poses into timestamped camera centres."""
+    import csv
+    from pathlib import Path
+
+    path = Path(poses_csv)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"camera poses not found: {path} — run reconstruct-poses first")
+    samples: list[VisualSample] = []
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            if row.get("kept", "1").strip() not in ("1", "True", "true"):
+                continue
+            try:
+                pos = np.array([float(row["tx"]), float(row["ty"]),
+                                float(row["tz"])], dtype=np.float64)
+            except (KeyError, ValueError):
+                continue
+            samples.append(VisualSample(
+                timestamp_s=float(row["timestamp_s"]), position=pos,
+                frame_id=int(row.get("frame_id") or 0),
+                filename=str(row.get("filename") or "")))
+    samples.sort(key=lambda s: s.timestamp_s)
+    if not samples:
+        raise ValueError(f"no kept poses in {path}")
+    return samples
