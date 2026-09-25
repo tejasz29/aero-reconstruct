@@ -66,3 +66,31 @@ def test_ransac_survives_outliers():
     assert abs(est.scale - 2.5) / 2.5 < 0.01
     err = compute_residuals_m(src[inliers], dst[inliers], est)
     assert float((err ** 2).mean() ** 0.5) < 0.5
+
+
+def test_interpolation_no_extrapolation_and_rotation_math():
+    import pytest
+
+    from src.georef.align import (
+        MetricSample,
+        VisualSample,
+        align_camera_rotation,
+        interpolate_metric_to_visual,
+        is_valid_rotation,
+    )
+
+    visual = [VisualSample(t, np.array([float(t), 0.0, 0.0]))
+              for t in (0.0, 0.5, 1.0, 5.0)]
+    metric = [MetricSample(t, np.array([2.0 * t, 0.0, 0.0]))
+              for t in (0.0, 1.0)]
+    src, dst, kept = interpolate_metric_to_visual(visual, metric)
+    assert len(kept) == 3  # t=5.0 outside GPS span is dropped
+    np.testing.assert_allclose(dst[:, 0], [0.0, 1.0, 2.0], atol=1e-9)
+
+    gt = _known_transform()
+    assert is_valid_rotation(gt.R)
+    assert not is_valid_rotation(np.eye(3) * 2.0)
+    R_wc = np.eye(3)
+    np.testing.assert_allclose(align_camera_rotation(R_wc, gt), gt.R.T, atol=1e-9)
+    with pytest.raises(ValueError, match="non-empty"):
+        interpolate_metric_to_visual([], metric)
