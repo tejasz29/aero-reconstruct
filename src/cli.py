@@ -27,6 +27,8 @@ or, after ``pip install -e .``::
   figures under outputs/reports/ (sanity-check before heavy steps).
 * ``convert-gps`` — STEP 7: project the GPS log into metric coordinates
   (ENU or UTM) -> outputs/georef/gps_metric.csv + report.
+* ``align-trajectory`` — STEP 8: robust similarity X_g = s·R·X_v + t over
+  camera_poses.csv + gps_metric.csv -> aligned_trajectory.csv + report.
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """
@@ -42,6 +44,7 @@ from src.common.config_loader import get, load_config
 from src.common.logging_utils import get_logger, setup_logging
 from src.common.paths import PROJECT_ROOT, project_paths
 from src.calibration.runner import resolve_calibration
+from src.georef.align import run_alignment
 from src.georef.gps import run_gps_conversion
 from src.sfm.runner import run_reconstruction
 from src.sfm.visualize import plot_trajectory, read_poses_csv
@@ -264,6 +267,27 @@ def cmd_show_trajectory(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_align_trajectory(args: argparse.Namespace) -> int:
+    """STEP 8 — fit visual<->GPS similarity + write aligned trajectory."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    result = run_alignment(
+        cfg, poses_csv=args.poses_csv, gps_metric_csv=args.gps_metric_csv,
+        output_dir=args.output_dir,
+        iterations_override=args.iterations,
+        threshold_override=args.threshold)
+    print(f"correspondences: {result.n_correspondences} "
+          f"(inliers={result.n_inliers})")
+    print(f"scale   : {result.transform.scale:.6f}")
+    print(f"trans   : [{', '.join(f'{v:.3f}' for v in result.transform.t)}]")
+    print(f"rmse_in : {result.rmse_inliers_m:.3f} m"
+          if result.rmse_inliers_m is not None else "rmse_in : -")
+    print(f"output  : {result.aligned_csv}")
+    print(f"report  : {result.report_json}")
+    return 0
+
+
 def cmd_convert_gps(args: argparse.Namespace) -> int:
     """STEP 7 — project the GPS log into metric coordinates + report."""
     from pathlib import Path
@@ -359,6 +383,21 @@ def build_parser() -> argparse.ArgumentParser:
     cg.add_argument("--utm-zone", type=int, default=None,
                     help="override gps.utm_zone (1..60).")
     cg.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
+
+    al = sub.add_parser("align-trajectory",
+                        help="STEP 8: fit visual<->GPS similarity "
+                             "X_g = s*R*X_v + t -> aligned_trajectory.csv.")
+    al.add_argument("--poses-csv", default=None,
+                    help="camera_poses.csv (default: <paths.trajectory>/...).")
+    al.add_argument("--gps-metric-csv", default=None,
+                    help="gps_metric.csv (default: <paths.georef>/...).")
+    al.add_argument("--output-dir", default=None,
+                    help="output dir for aligned_trajectory.csv (default: paths.georef).")
+    al.add_argument("--iterations", type=int, default=None,
+                    help="override alignment.ransac_iterations.")
+    al.add_argument("--threshold", type=float, default=None,
+                    help="override alignment.inlier_threshold_m.")
+    al.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
@@ -371,7 +410,8 @@ def main(argv: list[str] | None = None) -> int:
                 "calibrate": cmd_calibrate,
                 "reconstruct-poses": cmd_reconstruct_poses,
                 "show-trajectory": cmd_show_trajectory,
-                "convert-gps": cmd_convert_gps}
+                "convert-gps": cmd_convert_gps,
+                "align-trajectory": cmd_align_trajectory}
     return handlers[args.command](args)
 
 

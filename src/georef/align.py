@@ -1,0 +1,466 @@
+"""STEP 8 — Visual <-> GPS similarity alignment.
+
+Resolves the monocular scale ambiguity from STEP 5: the SfM trajectory
+lives in an arbitrary relative frame (world = first keyframe, unit-less
+baseline), while STEP 7 provides metric GPS positions in ENU/UTM.
+
+We fit ``X_global ~= s * R * X_visual + t`` with a robust Umeyama +
+RANSAC estimator, then apply it to all kept camera centres (and rotate
+their world->camera rotations accordingly). RTK/PPK fixes, when present,
+are honoured via ``alignment.use_rtk_if_available`` (tighter inliers).
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from src.common.logging_utils import get_logger
+
+log = get_logger("sp3d.georef.align")
+
+
+class SimilarityTransform:
+    """Scale-rotation-translation map: X_global = s * R @ X_visual + t."""
+
+    def __init__(self, scale: float = 1.0,
+                 rotation: np.ndarray | None = None,
+                 translation: np.ndarray | None = None):
+        self.scale = float(scale)
+        self.R = np.eye(3) if rotation is None else np.asarray(
+            rotation, dtype=np.float64).reshape(3, 3)
+        self.t = np.zeros(3) if translation is None else np.asarray(
+            translation, dtype=np.float64).reshape(3)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return (f"SimilarityTransform(scale={self.scale:.6f}, "
+                f"t={self.t.tolist()})")
+
+
+class VisualSample:
+    """One kept SfM camera centre with its timestamp."""
+
+    def __init__(self, timestamp_s: float, position: np.ndarray,
+                 frame_id: int = 0, filename: str = ""):
+        self.timestamp_s = float(timestamp_s)
+        self.position = np.asarray(position, dtype=np.float64).reshape(3)
+        self.frame_id = int(frame_id)
+        self.filename = str(filename)
+
+
+class MetricSample:
+    """One GPS metric position (easting, northing, up) with timestamp."""
+
+    def __init__(self, timestamp_s: float, position: np.ndarray):
+        self.timestamp_s = float(timestamp_s)
+        self.position = np.asarray(position, dtype=np.float64).reshape(3)
+
+
+class AlignmentResult:
+    """Everything produced by one :func:`run_alignment` call."""
+
+    def __init__(self, transform: SimilarityTransform,
+                 n_correspondences: int = 0,
+                 n_inliers: int = 0,
+                 rmse_inliers_m: float | None = None,
+                 rmse_all_m: float | None = None,
+                 inlier_ratio: float = 0.0,
+                 crs: str = "", zone: str | None = None,
+                 aligned_csv: str = "", transform_json: str = "",
+                 report_json: str = ""):
+        self.transform = transform
+        self.n_correspondences = int(n_correspondences)
+        self.n_inliers = int(n_inliers)
+        self.rmse_inliers_m = rmse_inliers_m
+        self.rmse_all_m = rmse_all_m
+        self.inlier_ratio = float(inlier_ratio)
+        self.crs = str(crs)
+        self.zone = zone
+        self.aligned_csv = str(aligned_csv)
+        self.transform_json = str(transform_json)
+        self.report_json = str(report_json)
+
+
+def estimate_similarity_umeyama(src: np.ndarray, dst: np.ndarray,
+                                with_scale: bool = True) -> SimilarityTransform:
+    """Least-squares similarity ``dst ~= s * R @ src + t`` (Umeyama 1991).
+
+    Args:
+        src: (N, 3) visual positions.  dst: (N, 3) metric positions.
+    Raises:
+        ValueError: fewer than 3 points or degenerate (zero-variance) input.
+    """
+    src = np.asarray(src, dtype=np.float64).reshape(-1, 3)
+    dst = np.asarray(dst, dtype=np.float64).reshape(-1, 3)
+    if src.shape != dst.shape or src.shape[0] < 3:
+        raise ValueError(
+            f"need >=3 correspondences with matching shapes, got "
+            f"{src.shape} vs {dst.shape}")
+    mu_src = src.mean(axis=0)
+    mu_dst = dst.mean(axis=0)
+    src_c = src - mu_src
+    dst_c = dst - mu_dst
+    var_src = float((src_c ** 2).sum() / len(src))
+    if var_src < 1e-12:
+        raise ValueError("degenerate visual configuration: zero variance")
+    cov = (dst_c.T @ src_c) / len(src)
+    u, d, vt = np.linalg.svd(cov)
+    s_mat = np.eye(3)
+    if np.linalg.det(u) * np.linalg.det(vt) < 0:
+        s_mat[2, 2] = -1.0
+    R = u @ s_mat @ vt
+    if with_scale:
+        scale = float((d * np.diag(s_mat)).sum() / var_src)
+    else:
+        scale = 1.0
+    t = mu_dst - scale * R @ mu_src
+    return SimilarityTransform(scale=scale, rotation=R, translation=t)
+
+
+def apply_similarity(points: np.ndarray,
+                     transform: SimilarityTransform) -> np.ndarray:
+    """Map visual points into the global frame: ``s * R @ X + t``."""
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    return transform.scale * (pts @ transform.R.T) + transform.t
+
+
+def compute_residuals_m(src: np.ndarray, dst: np.ndarray,
+                        transform: SimilarityTransform) -> np.ndarray:
+    """Per-correspondence Euclidean error in metres."""
+    pred = apply_similarity(src, transform)
+    return np.linalg.norm(np.asarray(dst, dtype=np.float64) - pred, axis=1)
+
+
+def rmse_m(errors: np.ndarray) -> float | None:
+    """Root-mean-square of per-point errors; None when empty."""
+    err = np.asarray(errors, dtype=np.float64).ravel()
+    return float(np.sqrt((err ** 2).mean())) if err.size else None
+
+
+def is_valid_rotation(R: np.ndarray, tol: float = 1e-6) -> bool:
+    """Check orthonormality (R @ R.T ~= I) and det(R) ~= +1."""
+    R = np.asarray(R, dtype=np.float64)
+    if R.shape != (3, 3):
+        return False
+    if abs(float(np.linalg.det(R)) - 1.0) > 1e-4:
+        return False
+    return bool(np.allclose(R @ R.T, np.eye(3), atol=tol))
+
+
+def read_visual_trajectory(poses_csv) -> list[VisualSample]:
+    """Parse kept STEP 5 poses into timestamped camera centres."""
+    import csv
+    from pathlib import Path
+
+    path = Path(poses_csv)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"camera poses not found: {path} — run reconstruct-poses first")
+    samples: list[VisualSample] = []
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            if row.get("kept", "1").strip() not in ("1", "True", "true"):
+                continue
+            try:
+                pos = np.array([float(row["tx"]), float(row["ty"]),
+                                float(row["tz"])], dtype=np.float64)
+            except (KeyError, ValueError):
+                continue
+            samples.append(VisualSample(
+                timestamp_s=float(row["timestamp_s"]), position=pos,
+                frame_id=int(row.get("frame_id") or 0),
+                filename=str(row.get("filename") or "")))
+    samples.sort(key=lambda s: s.timestamp_s)
+    if not samples:
+        raise ValueError(f"no kept poses in {path}")
+    return samples
+
+
+def read_metric_trajectory(gps_metric_csv) -> tuple[list[MetricSample], str, str | None]:
+    """Parse STEP 7 ``gps_metric.csv`` into timestamped metric positions."""
+    import csv
+    from pathlib import Path
+
+    path = Path(gps_metric_csv)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"gps metric file not found: {path} — run convert-gps first")
+    samples: list[MetricSample] = []
+    crs, zone = "enu", None
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            pos = np.array([float(row["easting_m"]), float(row["northing_m"]),
+                            float(row["up_m"])], dtype=np.float64)
+            samples.append(MetricSample(float(row["timestamp_s"]), pos))
+            crs = str(row.get("crs") or crs)
+            zone = str(row.get("zone") or "") or None
+    samples.sort(key=lambda s: s.timestamp_s)
+    if not samples:
+        raise ValueError(f"no metric fixes in {path}")
+    return samples, crs, zone
+
+
+def interpolate_metric_to_visual(
+        visual: list[VisualSample],
+        metric: list[MetricSample]) -> tuple[np.ndarray, np.ndarray, list[VisualSample]]:
+    """Linearly interpolate GPS metric positions onto visual timestamps.
+
+    Visual timestamps outside the GPS span are dropped (no extrapolation —
+    claiming scale where no GPS exists would be dishonest). Returns
+    ``(src, dst, kept_visual)`` with (N, 3) arrays.
+    """
+    if not visual or not metric:
+        raise ValueError("need non-empty visual and metric trajectories")
+    g_times = np.array([m.timestamp_s for m in metric], dtype=np.float64)
+    g_pos = np.array([m.position for m in metric], dtype=np.float64)
+    order = np.argsort(g_times)
+    g_times, g_pos = g_times[order], g_pos[order]
+    src_list, dst_list, kept = [], [], []
+    for v in visual:
+        if not (g_times[0] <= v.timestamp_s <= g_times[-1]):
+            continue
+        interp = np.array([np.interp(v.timestamp_s, g_times, g_pos[:, k])
+                           for k in range(3)], dtype=np.float64)
+        src_list.append(v.position)
+        dst_list.append(interp)
+        kept.append(v)
+    if not kept:
+        raise ValueError("no timestamp overlap between visual and GPS trajectories")
+    return np.asarray(src_list), np.asarray(dst_list), kept
+
+
+def build_correspondences(poses_csv, gps_metric_csv,
+                          min_correspondences: int = 6
+                          ) -> tuple[np.ndarray, np.ndarray, list[VisualSample], str, str | None]:
+    """Full STEP 5 + STEP 7 -> (src, dst) correspondence builder.
+
+    Raises ``ValueError`` when fewer than ``min_correspondences`` pairs
+    survive timestamp overlap.
+    """
+    visual = read_visual_trajectory(poses_csv)
+    metric, crs, zone = read_metric_trajectory(gps_metric_csv)
+    src, dst, kept = interpolate_metric_to_visual(visual, metric)
+    if len(kept) < min_correspondences:
+        raise ValueError(
+            f"only {len(kept)} visual<->GPS correspondences "
+            f"(need >= {min_correspondences}) — check timestamp overlap")
+    return src, dst, kept, crs, zone
+
+
+def ransac_similarity(src: np.ndarray, dst: np.ndarray,
+                      iterations: int = 1000,
+                      inlier_threshold_m: float = 2.0,
+                      min_correspondences: int = 6,
+                      seed: int = 42) -> tuple[SimilarityTransform, np.ndarray]:
+    """Robust similarity via RANSAC + least-squares refinement on inliers.
+
+    Minimal set is 3 non-collinear points. Returns ``(best_transform,
+    inlier_mask)``; refinement re-fits Umeyama on all inliers.
+    """
+    src = np.asarray(src, dtype=np.float64).reshape(-1, 3)
+    dst = np.asarray(dst, dtype=np.float64).reshape(-1, 3)
+    n = len(src)
+    if n < min_correspondences:
+        raise ValueError(f"need >= {min_correspondences} correspondences, got {n}")
+    rng = np.random.default_rng(seed)
+    best_inliers = np.zeros(n, dtype=bool)
+    best_count = 0
+    for _ in range(int(iterations)):
+        idx = rng.choice(n, size=3, replace=False)
+        try:
+            candidate = estimate_similarity_umeyama(src[idx], dst[idx])
+        except ValueError:
+            continue
+        errors = compute_residuals_m(src, dst, candidate)
+        inliers = errors <= float(inlier_threshold_m)
+        count = int(inliers.sum())
+        if count > best_count:
+            best_count = count
+            best_inliers = inliers
+            if best_count == n:
+                break
+    if best_count < 3:
+        # Fall back to a direct fit so degenerate-but-clean tracks still work.
+        best = estimate_similarity_umeyama(src, dst)
+        errors = compute_residuals_m(src, dst, best)
+        best_inliers = errors <= float(inlier_threshold_m)
+    else:
+        best = estimate_similarity_umeyama(src[best_inliers], dst[best_inliers])
+    return best, np.asarray(best_inliers, dtype=bool)
+
+
+def align_camera_centres(centres: np.ndarray,
+                         transform: SimilarityTransform) -> np.ndarray:
+    """Apply the fitted similarity to every SfM camera centre."""
+    return apply_similarity(centres, transform)
+
+
+def align_camera_rotation(R_wc: np.ndarray,
+                          transform: SimilarityTransform) -> np.ndarray:
+    """Rotate a world->camera rotation into the global frame: R_wc @ R.T."""
+    R_wc = np.asarray(R_wc, dtype=np.float64).reshape(3, 3)
+    return R_wc @ transform.R.T
+
+
+ALIGNED_CSV_COLUMNS = (
+    "frame_id", "timestamp_s", "filename",
+    "tx_visual", "ty_visual", "tz_visual",
+    "easting_m", "northing_m", "up_m",
+    "gps_easting_m", "gps_northing_m", "gps_up_m",
+    "residual_m", "inlier",
+)
+
+
+def write_aligned_csv(path, kept: list[VisualSample], aligned: np.ndarray,
+                      gps_interp: np.ndarray, residuals: np.ndarray,
+                      inliers: np.ndarray) -> str:
+    """Write per-frame visual/global/GPS positions + residuals."""
+    import csv
+    from pathlib import Path
+
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(ALIGNED_CSV_COLUMNS)
+        for v, a, g, r, inl in zip(kept, aligned, gps_interp,
+                                   residuals, inliers):
+            writer.writerow([
+                v.frame_id, f"{v.timestamp_s:.6f}", v.filename,
+                f"{v.position[0]:.6f}", f"{v.position[1]:.6f}",
+                f"{v.position[2]:.6f}",
+                f"{a[0]:.6f}", f"{a[1]:.6f}", f"{a[2]:.6f}",
+                f"{g[0]:.6f}", f"{g[1]:.6f}", f"{g[2]:.6f}",
+                f"{float(r):.6f}", int(bool(inl)),
+            ])
+    return str(out.resolve())
+
+
+def write_transform_json(path, transform: SimilarityTransform,
+                         crs: str, zone: str | None) -> str:
+    """Persist ``X_global = s * R * X_visual + t`` + CRS provenance."""
+    import json
+    from pathlib import Path
+
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "scale": float(transform.scale),
+        "rotation": [[float(v) for v in row] for row in transform.R.tolist()],
+        "translation": [float(v) for v in transform.t.tolist()],
+        "model": "X_global = s * R * X_visual + t",
+        "crs": crs,
+        "zone": zone if zone is not None else "",
+    }
+    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return str(out.resolve())
+
+
+def write_alignment_report(path, result: AlignmentResult,
+                           threshold_m: float, iterations: int) -> str:
+    """Persist the alignment quality report (scale, RMSE, inliers)."""
+    import json
+    from pathlib import Path
+
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    report = {
+        "scale": float(result.transform.scale),
+        "rotation": [[float(v) for v in row]
+                     for row in result.transform.R.tolist()],
+        "translation": [float(v) for v in result.transform.t.tolist()],
+        "n_correspondences": result.n_correspondences,
+        "n_inliers": result.n_inliers,
+        "inlier_ratio": round(float(result.inlier_ratio), 4),
+        "rmse_inliers_m": result.rmse_inliers_m,
+        "rmse_all_m": result.rmse_all_m,
+        "inlier_threshold_m": float(threshold_m),
+        "ransac_iterations": int(iterations),
+        "crs": result.crs,
+        "zone": result.zone if result.zone is not None else "",
+        "aligned_csv": result.aligned_csv,
+        "transform_json": result.transform_json,
+        "absolute_accuracy_note": (
+            "Ordinary GPS does not justify cm-level claims; "
+            "cm-level absolute accuracy requires RTK/PPK or surveyed control."
+        ),
+    }
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return str(out.resolve())
+
+
+def run_alignment(cfg: dict, poses_csv=None, gps_metric_csv=None,
+                  output_dir=None, iterations_override: int | None = None,
+                  threshold_override: float | None = None) -> AlignmentResult:
+    """STEP 8 entry point: fit similarity + write aligned outputs.
+
+    Reads ``alignment.ransac_iterations``, ``alignment.inlier_threshold_m``,
+    ``alignment.min_correspondences`` from ``cfg`` (overridable). Writes
+    ``outputs/georef/aligned_trajectory.csv``,
+    ``outputs/georef/similarity_transform.json`` and
+    ``outputs/reports/alignment_report.json``.
+    """
+    from pathlib import Path
+
+    from src.common.config_loader import get
+    from src.common.paths import PROJECT_ROOT
+
+    traj_default = Path(get(cfg, "paths.trajectory", "outputs/trajectory"))
+    poses_path = Path(poses_csv) if poses_csv else traj_default / "camera_poses.csv"
+    if not poses_path.is_absolute():
+        poses_path = PROJECT_ROOT / poses_path
+    georef_default = Path(get(cfg, "paths.georef", "outputs/georef"))
+    gps_path = (Path(gps_metric_csv) if gps_metric_csv
+                else georef_default / "gps_metric.csv")
+    if not gps_path.is_absolute():
+        gps_path = PROJECT_ROOT / gps_path
+
+    iterations = (int(iterations_override) if iterations_override is not None
+                  else int(get(cfg, "alignment.ransac_iterations", 1000)))
+    threshold = (float(threshold_override) if threshold_override is not None
+                 else float(get(cfg, "alignment.inlier_threshold_m", 2.0)))
+    min_corr = int(get(cfg, "alignment.min_correspondences", 6))
+    seed = int(get(cfg, "project.seed", 42))
+    use_rtk = bool(get(cfg, "alignment.use_rtk_if_available", True))
+    if use_rtk:
+        log.info("RTK/PPK path enabled when high-accuracy fixes are present; "
+                 "otherwise ordinary-GPS threshold (%.2f m) applies", threshold)
+
+    src, dst, kept, crs, zone = build_correspondences(
+        poses_path, gps_path, min_correspondences=min_corr)
+    transform, inliers = ransac_similarity(
+        src, dst, iterations=iterations, inlier_threshold_m=threshold,
+        min_correspondences=min_corr, seed=seed)
+    residuals = compute_residuals_m(src, dst, transform)
+    aligned = apply_similarity(src, transform)
+
+    out_dir = Path(output_dir) if output_dir else georef_default
+    if not out_dir.is_absolute():
+        out_dir = PROJECT_ROOT / out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    aligned_csv = write_aligned_csv(out_dir / "aligned_trajectory.csv", kept,
+                                    aligned, dst, residuals, inliers)
+    transform_json = write_transform_json(
+        out_dir / "similarity_transform.json", transform, crs, zone)
+
+    rmse_all = rmse_m(residuals)
+    rmse_in = rmse_m(residuals[inliers]) if int(inliers.sum()) else None
+    result = AlignmentResult(
+        transform=transform, n_correspondences=len(kept),
+        n_inliers=int(inliers.sum()), rmse_inliers_m=rmse_in,
+        rmse_all_m=rmse_all,
+        inlier_ratio=float(inliers.sum()) / max(len(kept), 1),
+        crs=crs, zone=zone, aligned_csv=aligned_csv,
+        transform_json=transform_json, report_json="")
+
+    report_dir = Path(get(cfg, "paths.reports", "outputs/reports"))
+    if not report_dir.is_absolute():
+        report_dir = PROJECT_ROOT / report_dir
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_json = write_alignment_report(
+        report_dir / "alignment_report.json", result, threshold, iterations)
+    result.report_json = report_json
+    log.info("alignment: %d correspondences -> %d inliers "
+             "(scale %.4f, rmse_in %.3f m, crs=%s)",
+             result.n_correspondences, result.n_inliers,
+             transform.scale, rmse_in or -1.0, crs)
+    return result
