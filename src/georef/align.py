@@ -333,3 +333,56 @@ def write_aligned_csv(path, kept: list[VisualSample], aligned: np.ndarray,
                 f"{float(r):.6f}", int(bool(inl)),
             ])
     return str(out.resolve())
+
+
+def write_transform_json(path, transform: SimilarityTransform,
+                         crs: str, zone: str | None) -> str:
+    """Persist ``X_global = s * R * X_visual + t`` + CRS provenance."""
+    import json
+    from pathlib import Path
+
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "scale": float(transform.scale),
+        "rotation": [[float(v) for v in row] for row in transform.R.tolist()],
+        "translation": [float(v) for v in transform.t.tolist()],
+        "model": "X_global = s * R * X_visual + t",
+        "crs": crs,
+        "zone": zone if zone is not None else "",
+    }
+    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return str(out.resolve())
+
+
+def write_alignment_report(path, result: AlignmentResult,
+                           threshold_m: float, iterations: int) -> str:
+    """Persist the alignment quality report (scale, RMSE, inliers)."""
+    import json
+    from pathlib import Path
+
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    report = {
+        "scale": float(result.transform.scale),
+        "rotation": [[float(v) for v in row]
+                     for row in result.transform.R.tolist()],
+        "translation": [float(v) for v in result.transform.t.tolist()],
+        "n_correspondences": result.n_correspondences,
+        "n_inliers": result.n_inliers,
+        "inlier_ratio": round(float(result.inlier_ratio), 4),
+        "rmse_inliers_m": result.rmse_inliers_m,
+        "rmse_all_m": result.rmse_all_m,
+        "inlier_threshold_m": float(threshold_m),
+        "ransac_iterations": int(iterations),
+        "crs": result.crs,
+        "zone": result.zone if result.zone is not None else "",
+        "aligned_csv": result.aligned_csv,
+        "transform_json": result.transform_json,
+        "absolute_accuracy_note": (
+            "Ordinary GPS does not justify cm-level claims; "
+            "cm-level absolute accuracy requires RTK/PPK or surveyed control."
+        ),
+    }
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return str(out.resolve())
