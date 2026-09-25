@@ -299,3 +299,37 @@ def align_camera_rotation(R_wc: np.ndarray,
     """Rotate a world->camera rotation into the global frame: R_wc @ R.T."""
     R_wc = np.asarray(R_wc, dtype=np.float64).reshape(3, 3)
     return R_wc @ transform.R.T
+
+
+ALIGNED_CSV_COLUMNS = (
+    "frame_id", "timestamp_s", "filename",
+    "tx_visual", "ty_visual", "tz_visual",
+    "easting_m", "northing_m", "up_m",
+    "gps_easting_m", "gps_northing_m", "gps_up_m",
+    "residual_m", "inlier",
+)
+
+
+def write_aligned_csv(path, kept: list[VisualSample], aligned: np.ndarray,
+                      gps_interp: np.ndarray, residuals: np.ndarray,
+                      inliers: np.ndarray) -> str:
+    """Write per-frame visual/global/GPS positions + residuals."""
+    import csv
+    from pathlib import Path
+
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(ALIGNED_CSV_COLUMNS)
+        for v, a, g, r, inl in zip(kept, aligned, gps_interp,
+                                   residuals, inliers):
+            writer.writerow([
+                v.frame_id, f"{v.timestamp_s:.6f}", v.filename,
+                f"{v.position[0]:.6f}", f"{v.position[1]:.6f}",
+                f"{v.position[2]:.6f}",
+                f"{a[0]:.6f}", f"{a[1]:.6f}", f"{a[2]:.6f}",
+                f"{g[0]:.6f}", f"{g[1]:.6f}", f"{g[2]:.6f}",
+                f"{float(r):.6f}", int(bool(inl)),
+            ])
+    return str(out.resolve())
