@@ -359,3 +359,41 @@ def estimate_planar_similarity(source: np.ndarray,
     t = np.array([t_xy[0], t_xy[1],
                   float(dst[:, 2].mean() - scale * src[:, 2].mean())])
     return SimilarityTransform(scale, R, t)
+
+
+def _resolve_estimator(mode: str):
+    """Return the point-to-point fitter for an alignment mode."""
+    key = (mode or "3d").strip().lower()
+    if key == "3d":
+        return estimate_similarity
+    if key == "2d":
+        return estimate_planar_similarity
+    raise ValueError(
+        f"unknown alignment mode {mode!r} — expected one of "
+        f"{' | '.join(ALIGNMENT_MODES)}")
+
+
+def _hypothesis(source: np.ndarray, target: np.ndarray, min_samples: int,
+                estimator, rng: np.random.Generator) -> SimilarityTransform | None:
+    """Fit one random minimal subset; ``None`` when that subset is degenerate.
+
+    A minimal sample of random correspondences is routinely degenerate (three
+    collinear camera centres, two identical GPS fixes), so a failed sample is
+    an expected outcome, not an error.
+    """
+    n = source.shape[0]
+    indices = (rng.choice(n, size=min_samples, replace=False)
+               if n > min_samples else np.arange(n))
+    try:
+        return estimator(source[indices], target[indices])
+    except (ValueError, np.linalg.LinAlgError):
+        return None
+
+
+def inlier_mask(transform: SimilarityTransform, source: np.ndarray,
+                target: np.ndarray, threshold_m: float) -> np.ndarray:
+    """Boolean mask of correspondences within ``threshold_m`` of the fit."""
+    if threshold_m <= 0.0:
+        raise ValueError(
+            f"inlier threshold must be positive, got {threshold_m}")
+    return similarity_residuals(transform, source, target) <= threshold_m
