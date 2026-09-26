@@ -253,3 +253,52 @@ def residual_stats(residuals: np.ndarray) -> tuple[float, float, float]:
     return (float(np.sqrt(np.mean(res ** 2))),
             float(np.median(res)),
             float(np.max(res)))
+
+
+def _centroids(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Split points into their centroid and the centred coordinates."""
+    mu = points.mean(axis=0)
+    return mu, points - mu
+
+
+def estimate_similarity(source: np.ndarray, target: np.ndarray,
+                        with_scale: bool = True) -> SimilarityTransform:
+    """Closed-form least-squares similarity fit (Umeyama, 1991).
+
+    Minimises ``sum_i || target_i - (s R source_i + t) ||^2`` over ``s``, the
+    rotation ``R`` and the offset ``t``. With ``with_scale=False`` the rotation
+    stays rigid and the scale is pinned to 1 — only meaningful when the scale
+    is already known from another source.
+
+    Requires at least :data:`MIN_SIMILARITY_SAMPLES` correspondences whose
+    source points actually span 3D. A coplanar but non-degenerate path (the
+    normal case for a drone pass) is fine; coincident or collinear sources
+    cannot constrain a 3D similarity and raise ``ValueError``.
+    """
+    src, dst = _as_point_arrays(source, target)
+    n = src.shape[0]
+    if n < MIN_SIMILARITY_SAMPLES:
+        raise ValueError(
+            f"a 3D similarity needs at least {MIN_SIMILARITY_SAMPLES} "
+            f"correspondences, got {n}")
+    mu_s, centred_s = _centroids(src)
+    mu_d, centred_d = _centroids(dst)
+    covariance = (centred_d.T @ centred_s) / n
+    U, singular, Vt = np.linalg.svd(covariance)
+    # det(U Vt) == -1 means the data are mirrored: a camera-frame change of
+    # basis cannot mirror, so fold the reflection into the smallest singular
+    # value (the classic Umeyama/ Kabsch correction).
+    correction = np.diag([1.0, 1.0, float(np.sign(np.linalg.det(U @ Vt)))])
+    R = U @ correction @ Vt
+    if not with_scale:
+        return SimilarityTransform(1.0, R, mu_d - R @ mu_s)
+
+    variance = float((centred_s ** 2).sum() / n)
+    if variance <= 1e-18:
+        raise ValueError("degenerate source points: zero spatial variance")
+    scale = float(np.trace(correction @ np.diag(singular)) / variance)
+    if scale <= 0.0:
+        raise ValueError(
+            f"fitted scale is not positive ({scale:.6g}) — the source and "
+            "target sets are inconsistent (mirrored?)")
+    return SimilarityTransform(scale, R, mu_d - scale * (R @ mu_s))
