@@ -323,10 +323,15 @@ def _similarity_2d(source_xy: np.ndarray,
             f"got {src.shape[0]}")
     z = src[:, 0] + 1j * src[:, 1]
     w = dst[:, 0] + 1j * dst[:, 1]
-    denominator = float(np.sum(np.abs(z) ** 2))
+    # The offset b is a free parameter, so both sums must be centred —
+    # otherwise the solve is biased by the raw distance of the path from the
+    # visual origin (which STEP 5 arbitrarily pins at the first keyframe).
+    z_centred = z - z.mean()
+    w_centred = w - w.mean()
+    denominator = float(np.sum(np.abs(z_centred) ** 2))
     if denominator <= 1e-18:
         raise ValueError("degenerate source points: zero planar variance")
-    a = np.sum(w * np.conj(z)) / denominator
+    a = np.sum(w_centred * np.conj(z_centred)) / denominator
     b = w.mean() - a * z.mean()
     return float(abs(a)), float(np.angle(a)), np.array([b.real, b.imag])
 
