@@ -401,21 +401,23 @@ def inlier_mask(transform: SimilarityTransform, source: np.ndarray,
 
 def refine_similarity(transform: SimilarityTransform, source: np.ndarray,
                       target: np.ndarray, mask: np.ndarray,
-                      threshold_m: float) -> tuple[SimilarityTransform, np.ndarray]:
+                      threshold_m: float, estimator=None) -> tuple[SimilarityTransform, np.ndarray]:
     """Re-fit the similarity on the inliers and re-evaluate the mask.
 
     One closed-form re-fit is enough: RANSAC picks a hypothesis that is
     correct but noisy, because it is fitted to three points. Re-fitting on the
     full inlier set uses every accepted correspondence and drops the sample
     noise; the mask is recomputed afterwards so the reported inlier set always
-    matches the reported transform. Returns the refined transform and mask,
-    falling back to the inputs when the inliers are too few to re-fit.
+    matches the reported transform. ``estimator`` selects the alignment mode
+    (3D by default); returns the inputs unchanged when the inliers are too few
+    to re-fit or the subset is degenerate.
     """
     selected = np.asarray(mask, dtype=bool).reshape(-1)
     if int(selected.sum()) < MIN_SIMILARITY_SAMPLES:
         return transform, selected
+    fit = estimate_similarity if estimator is None else estimator
     try:
-        refined = estimate_similarity(source[selected], target[selected])
+        refined = fit(source[selected], target[selected])
     except (ValueError, np.linalg.LinAlgError):
         return transform, selected
     return refined, inlier_mask(refined, source, target, threshold_m)
