@@ -421,3 +421,78 @@ def refine_similarity(transform: SimilarityTransform, source: np.ndarray,
     except (ValueError, np.linalg.LinAlgError):
         return transform, selected
     return refined, inlier_mask(refined, source, target, threshold_m)
+
+
+def ransac_similarity(source: np.ndarray, target: np.ndarray,
+                      inlier_threshold_m: float = 2.0,
+                      iterations: int = 1000,
+                      min_samples: int = MIN_SIMILARITY_SAMPLES,
+                      mode: str = "3d",
+                      seed: int | None = 42) -> AlignmentFit:
+    """Robust visual->global similarity: RANSAC, then a closed-form re-fit.
+
+    Hypotheses are scored by inlier count, ties broken by the lower median
+    residual, and the winner is refined on its inliers. Outliers here are not
+    hypothetical: consumer GPS jumps, fix dropout and pose/timestamp jitter
+    routinely put a few correspondences metres off the track, and a plain
+    least-squares fit would smear the whole reconstruction with them.
+
+    The returned fit is marked ``success=False`` (with a ``reject_reason``) when
+    there are too few correspondences, when no sampled hypothesis could be
+    fitted, or when too few inliers survive — in that case the transform is
+    the identity and must not be used to georeference anything.
+    """
+    estimator = _resolve_estimator(mode)
+    src, dst = _as_point_arrays(source, target)
+    n = src.shape[0]
+    if n < min_samples:
+        return AlignmentFit(
+            transform=identity_transform(), n_correspondences=n,
+            inlier_mask=np.zeros(n, dtype=bool), n_inliers=0, rmse_m=0.0,
+            median_residual_m=0.0, max_residual_m=0.0, success=False,
+            reject_reason="too_few_correspondences")
+    if iterations < 1:
+        raise ValueError(f"ransac iterations must be >= 1, got {iterations}")
+    if min_samples < 2:
+        raise ValueError(f"min_samples must be >= 2, got {min_samples}")
+
+    rng = np.random.default_rng(seed)
+    best: AlignmentFit | None = None
+    used = 0
+    for used in range(1, iterations + 1):
+        candidate = _hypothesis(src, dst, min_samples, estimator, rng)
+        if candidate is None:
+            continue
+        mask = inlier_mask(candidate, src, dst, inlier_threshold_m)
+        n_inliers = int(mask.sum())
+        rmse, median, worst = residual_stats(
+            similarity_residuals(candidate, src, dst)[mask])
+        if best is None or (n_inliers, -median) > (best.n_inliers,
+                                                   -best.median_residual_m):
+            best = AlignmentFit(
+                transform=candidate, n_correspondences=n, inlier_mask=mask,
+                n_inliers=n_inliers, rmse_m=rmse, median_residual_m=median,
+                max_residual_m=worst, iterations=used)
+    if best is None:
+        return AlignmentFit(
+            transform=identity_transform(), n_correspondences=n,
+            inlier_mask=np.zeros(n, dtype=bool), n_inliers=0, rmse_m=0.0,
+            median_residual_m=0.0, max_residual_m=0.0, iterations=used,
+            success=False, reject_reason="no_valid_hypothesis")
+
+    refined, mask = refine_similarity(best.transform, src, dst,
+                                      best.inlier_mask, inlier_threshold_m,
+                                      estimator)
+    residuals = similarity_residuals(refined, src, dst)
+    n_inliers = int(mask.sum())
+    rmse, median, worst = residual_stats(residuals[mask])
+    if (n_inliers, -rmse) >= (best.n_inliers, -best.rmse_m):
+        best = AlignmentFit(
+            transform=refined, n_correspondences=n, inlier_mask=mask,
+            n_inliers=n_inliers, rmse_m=rmse, median_residual_m=median,
+            max_residual_m=worst, iterations=used)
+    if best.n_inliers < max(MIN_SIMILARITY_SAMPLES,
+                            min_samples):
+        best.success = False
+        best.reject_reason = "insufficient_inliers"
+    return best
