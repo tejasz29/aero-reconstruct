@@ -302,3 +302,55 @@ def estimate_similarity(source: np.ndarray, target: np.ndarray,
             f"fitted scale is not positive ({scale:.6g}) — the source and "
             "target sets are inconsistent (mirrored?)")
     return SimilarityTransform(scale, R, mu_d - scale * (R @ mu_s))
+
+
+def _similarity_2d(source_xy: np.ndarray,
+                   target_xy: np.ndarray) -> tuple[float, float, np.ndarray]:
+    """Closed-form 2D similarity ``dst = a * src + b`` in the complex plane.
+
+    Returns ``(scale, yaw_rad, translation_xy)``. The complex multiply by
+    ``a = s * exp(i * yaw)`` folds rotation and scale into one unknown, so the
+    solve is a single least-squares ratio plus a mean offset.
+    """
+    src = np.asarray(source_xy, dtype=np.float64).reshape(-1, 2)
+    dst = np.asarray(target_xy, dtype=np.float64).reshape(-1, 2)
+    if src.shape[0] != dst.shape[0]:
+        raise ValueError(
+            f"source/target length mismatch: {src.shape[0]} vs {dst.shape[0]}")
+    if src.shape[0] < 2:
+        raise ValueError(
+            f"a planar similarity needs at least 2 correspondences, "
+            f"got {src.shape[0]}")
+    z = src[:, 0] + 1j * src[:, 1]
+    w = dst[:, 0] + 1j * dst[:, 1]
+    denominator = float(np.sum(np.abs(z) ** 2))
+    if denominator <= 1e-18:
+        raise ValueError("degenerate source points: zero planar variance")
+    a = np.sum(w * np.conj(z)) / denominator
+    b = w.mean() - a * z.mean()
+    return float(abs(a)), float(np.angle(a)), np.array([b.real, b.imag])
+
+
+def estimate_planar_similarity(source: np.ndarray,
+                               target: np.ndarray) -> SimilarityTransform:
+    """Planar (yaw-only) similarity for a nadir-looking trajectory.
+
+    The visual path is treated as flat: source x/y map onto global east/north
+    through a 2D similarity (scale, yaw, offset) and source z maps onto global
+    up with the same scale, with the height offset centred on the data.
+
+    This is exact when the camera looks straight down — the common mapping
+    flight — and is better conditioned than the full 3D fit, because a nearly
+    planar path leaves the out-of-plane rotation weakly observable. It is wrong
+    for a tilted or oblique camera, where the visual x/y axes are not
+    horizontal; use mode ``3d`` there.
+    """
+    src, dst = _as_point_arrays(source, target)
+    scale, yaw, t_xy = _similarity_2d(src[:, :2], dst[:, :2])
+    cos_yaw, sin_yaw = np.cos(yaw), np.sin(yaw)
+    R = np.array([[cos_yaw, -sin_yaw, 0.0],
+                  [sin_yaw, cos_yaw, 0.0],
+                  [0.0, 0.0, 1.0]])
+    t = np.array([t_xy[0], t_xy[1],
+                  float(dst[:, 2].mean() - scale * src[:, 2].mean())])
+    return SimilarityTransform(scale, R, t)
