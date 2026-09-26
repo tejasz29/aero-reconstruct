@@ -113,3 +113,38 @@ def invert_similarity(transform: SimilarityTransform) -> SimilarityTransform:
     scale_inv = 1.0 / transform.scale
     t_inv = -scale_inv * (R_inv @ np.asarray(transform.t, dtype=np.float64))
     return SimilarityTransform(scale_inv, R_inv, t_inv)
+
+
+def transform_to_dict(transform: SimilarityTransform) -> dict:
+    """JSON-ready dict of the transform, with the model written out explicitly.
+
+    The ``model`` field is stored rather than implied so that a consumer of
+    ``alignment_transform.json`` (STEP 10, STEP 16, the viewer) never has to
+    guess whether the translation is applied before or after the rotation.
+    """
+    R = np.asarray(transform.R, dtype=np.float64)
+    t = np.asarray(transform.t, dtype=np.float64)
+    return {
+        "model": "X_global = scale * (R @ X_visual) + translation_m",
+        "scale": float(transform.scale),
+        "rotation": [[float(v) for v in row] for row in R],
+        "translation_m": [float(v) for v in t],
+    }
+
+
+def transform_from_dict(data: dict) -> SimilarityTransform:
+    """Rebuild a :class:`SimilarityTransform` from :func:`transform_to_dict`."""
+    if not isinstance(data, dict):
+        raise ValueError("transform payload must be a dict")
+    for key in ("scale", "rotation", "translation_m"):
+        if key not in data:
+            raise ValueError(f"transform payload is missing '{key}'")
+    rotation = np.asarray(data["rotation"], dtype=np.float64)
+    if rotation.shape != (3, 3):
+        raise ValueError(
+            f"transform rotation must be 3x3, got {rotation.shape}")
+    translation = np.asarray(data["translation_m"], dtype=np.float64).reshape(-1)
+    if translation.shape != (3,):
+        raise ValueError(
+            f"transform translation must have 3 components, got {translation.shape}")
+    return SimilarityTransform(float(data["scale"]), rotation, translation)
