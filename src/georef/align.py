@@ -70,3 +70,19 @@ class SimilarityTransform:
             raise ValueError("rotation and translation must be finite")
         object.__setattr__(self, "R", R)
         object.__setattr__(self, "t", t)
+
+
+def identity_transform() -> SimilarityTransform:
+    """Unit scale, identity rotation, zero offset — the no-op alignment."""
+    return SimilarityTransform(1.0, np.eye(3), np.zeros(3))
+
+
+def apply_similarity(transform: SimilarityTransform,
+                    points: np.ndarray) -> np.ndarray:
+    """Map visual-frame points into the global metric frame, as ``(N, 3)``."""
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if pts.shape[0] == 0:
+        return pts
+    R = np.asarray(transform.R, dtype=np.float64)
+    return (transform.scale * (pts @ R.T)
+            + np.asarray(transform.t, dtype=np.float64))
