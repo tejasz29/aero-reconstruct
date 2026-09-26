@@ -212,3 +212,44 @@ class AlignmentResult:
     def scale(self) -> float:
         """Metres per visual (SfM) unit — the resolved monocular scale."""
         return self.transform.scale
+
+
+def _as_point_arrays(source: np.ndarray, target: np.ndarray
+                     ) -> tuple[np.ndarray, np.ndarray]:
+    """Validate and reshape a correspondence pair to two ``(N, 3)`` arrays."""
+    src = np.asarray(source, dtype=np.float64).reshape(-1, 3)
+    dst = np.asarray(target, dtype=np.float64).reshape(-1, 3)
+    if src.shape[0] != dst.shape[0]:
+        raise ValueError(
+            f"source/target length mismatch: {src.shape[0]} vs {dst.shape[0]}")
+    if not np.all(np.isfinite(src)) or not np.all(np.isfinite(dst)):
+        raise ValueError("correspondence points must all be finite")
+    return src, dst
+
+
+def similarity_residuals(transform: SimilarityTransform, source: np.ndarray,
+                         target: np.ndarray) -> np.ndarray:
+    """Per-correspondence residual distance in metres after applying ``transform``.
+
+    The gate used by :func:`ransac_similarity` is exactly this number: a pair
+    whose mapped source lands further than the threshold from its target is an
+    outlier, which is how GPS spikes and mismatched poses get thrown out.
+    """
+    src, dst = _as_point_arrays(source, target)
+    if src.shape[0] == 0:
+        return np.zeros(0, dtype=np.float64)
+    return np.linalg.norm(apply_similarity(transform, src) - dst, axis=1)
+
+
+def residual_stats(residuals: np.ndarray) -> tuple[float, float, float]:
+    """``(rmse, median, max)`` residual distance, all in metres.
+
+    An empty residual vector (no correspondences at all) reports zeros rather
+    than NaN so the report stays JSON-clean.
+    """
+    res = np.asarray(residuals, dtype=np.float64).reshape(-1)
+    if res.size == 0:
+        return 0.0, 0.0, 0.0
+    return (float(np.sqrt(np.mean(res ** 2))),
+            float(np.median(res)),
+            float(np.max(res)))
