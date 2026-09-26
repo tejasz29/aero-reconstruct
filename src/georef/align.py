@@ -148,3 +148,67 @@ def transform_from_dict(data: dict) -> SimilarityTransform:
         raise ValueError(
             f"transform translation must have 3 components, got {translation.shape}")
     return SimilarityTransform(float(data["scale"]), rotation, translation)
+
+
+@dataclass
+class AlignmentFit:
+    """Outcome of one robust similarity fit over a set of correspondences."""
+
+    transform: SimilarityTransform
+    n_correspondences: int
+    inlier_mask: np.ndarray
+    n_inliers: int
+    rmse_m: float
+    median_residual_m: float
+    max_residual_m: float
+    iterations: int = 0
+    success: bool = True
+    reject_reason: str = ""
+
+    @property
+    def inlier_ratio(self) -> float:
+        """Fraction of correspondences that survived the residual gate."""
+        if not self.n_correspondences:
+            return 0.0
+        return self.n_inliers / self.n_correspondences
+
+    @property
+    def outlier_indices(self) -> list[int]:
+        """Indices of the rejected correspondences (audit trail)."""
+        mask = np.asarray(self.inlier_mask, dtype=bool).reshape(-1)
+        return [int(i) for i in np.flatnonzero(~mask)]
+
+
+@dataclass
+class AlignmentResult:
+    """Everything produced by one :func:`run_alignment` call."""
+
+    transform: SimilarityTransform
+    crs: str
+    mode: str
+    n_correspondences: int
+    n_inliers: int
+    rmse_m: float
+    median_residual_m: float
+    max_residual_m: float
+    rtk: "RtkInfo"
+    accuracy: dict
+    rows: list[dict]
+    zone: str | None = None
+    success: bool = True
+    reject_reason: str = ""
+    aligned_csv: str = ""
+    transform_json: str = ""
+    report_json: str = ""
+
+    @property
+    def inlier_ratio(self) -> float:
+        """Fraction of correspondences that survived the residual gate."""
+        if not self.n_correspondences:
+            return 0.0
+        return self.n_inliers / self.n_correspondences
+
+    @property
+    def scale(self) -> float:
+        """Metres per visual (SfM) unit — the resolved monocular scale."""
+        return self.transform.scale
