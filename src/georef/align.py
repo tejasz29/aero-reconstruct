@@ -86,3 +86,16 @@ def apply_similarity(transform: SimilarityTransform,
     R = np.asarray(transform.R, dtype=np.float64)
     return (transform.scale * (pts @ R.T)
             + np.asarray(transform.t, dtype=np.float64))
+
+
+def apply_similarity_to_rotation(transform: SimilarityTransform,
+                                 R_wc: np.ndarray) -> np.ndarray:
+    """World->camera rotation re-expressed in the global frame: ``R_wc @ R.T``.
+
+    The similarity scale deliberately does not appear. After the alignment the
+    scene points *and* the camera centres are metric, so the projection
+    ``X_cam = R_gc @ (X_global - C_global)`` already yields metres and can be
+    used directly with the intrinsics and the learned depth of STEP 9/10.
+    """
+    R = np.asarray(transform.R, dtype=np.float64)
+    return np.asarray(R_wc, dtype=np.float64).reshape(3, 3) @ R.T
