@@ -99,3 +99,17 @@ def apply_similarity_to_rotation(transform: SimilarityTransform,
     """
     R = np.asarray(transform.R, dtype=np.float64)
     return np.asarray(R_wc, dtype=np.float64).reshape(3, 3) @ R.T
+
+
+def invert_similarity(transform: SimilarityTransform) -> SimilarityTransform:
+    """Inverse transform, mapping the global metric frame back to the visual one.
+
+    Needed downstream to push a metric point (e.g. a GPS-referenced control
+    point) into the reconstruction's own frame, or to re-project a global
+    camera centre onto the STEP 6 plots.
+    """
+    R = np.asarray(transform.R, dtype=np.float64)
+    R_inv = R.T
+    scale_inv = 1.0 / transform.scale
+    t_inv = -scale_inv * (R_inv @ np.asarray(transform.t, dtype=np.float64))
+    return SimilarityTransform(scale_inv, R_inv, t_inv)
