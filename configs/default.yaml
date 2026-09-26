@@ -88,11 +88,20 @@ gps:
   utm_zone: "auto"             # auto | <zone int 1..60>
 
 # --- STEP 8: visual <-> GPS similarity alignment  Xg = s*R*Xv + t ---
+# Resolves the monocular scale ambiguity of STEP 5 and puts the whole
+# reconstruction into the STEP 7 metric frame. Residual RMSE is an accuracy
+# statement about the alignment only — it is NOT a cm-level absolute accuracy
+# claim unless RTK/PPK fixes are actually used (ordinary GPS is metre-level).
 alignment:
+  mode: "3d"                   # 3d (full 7-dof similarity) | 2d (planar, nadir-looking path)
   ransac_iterations: 1000
-  inlier_threshold_m: 2.0
-  min_correspondences: 6
-  use_rtk_if_available: true
+  inlier_threshold_m: 2.0      # residual distance above which a pair is an outlier
+  min_correspondences: 6       # fewer matched pose<->GPS pairs than this = no alignment
+  min_inliers: 4               # accepted RANSAC inliers; below this the fit is rejected
+  max_time_gap_s: 0.5          # pose/GPS timestamp tolerance when pairing
+  rtk_inlier_threshold_m: 0.5  # tighter gate used when RTK/PPK fixes are present
+  use_rtk_if_available: true   # keep RTK-fixed fixes only (and tighten the gate)
+  output_name: "aligned_trajectory"
 
 # --- STEP 9: learned monocular depth ---
 depth:
