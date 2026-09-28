@@ -498,6 +498,134 @@ def ransac_similarity(source: np.ndarray, target: np.ndarray,
     return best
 
 
+#: Fix-status tokens meaning "this fix is differentially corrected (RTK/PPK)".
+RTK_FIX_TOKENS = frozenset({
+    "rtk", "rtk_fixed", "rtkfix", "fixed", "fix", "ppk", "ppk_fixed",
+    "dGPS", "dgps", "floating", "float_rtk", "integer",
+})
+
+#: Typical horizontal error of the two GPS tiers this project cares about.
+RTK_EXPECTED_ERROR_M = 0.03
+CONSUMER_GPS_EXPECTED_ERROR_M = 3.0
+
+
+def parse_fix_type(value: object) -> str:
+    """Normalise one GPS fix-status cell to a lowercase token (``''`` if absent).
+
+    Flight logs spell the same thing every way imaginable — ``RTK_FIXED``,
+    ``Fix``, ``3``, ``True`` — so the raw cell is meaningless without a
+    normaliser. An empty string means "the log carried no status at all",
+    which is *not* the same as "consumer GPS": the report has to be able to
+    say that it does not know.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "rtk_fixed" if value else "single"
+    if isinstance(value, (int, float)):
+        # NMEA-ish GGA quality indicators: 4 = RTK fixed, 5 = float, 1 = GPS.
+        return {1: "gps", 2: "dgps", 4: "rtk_fixed", 5: "float_rtk"}.get(
+            int(value), "")
+    text = str(value).strip().lower()
+    if not text:
+        return ""
+    if text in ("true", "yes", "y", "1"):
+        return "rtk_fixed"
+    if text in ("false", "no", "n", "0"):
+        return "single"
+    return text.replace("-", "_").replace(" ", "_")
+
+
+@dataclass(frozen=True)
+class RtkInfo:
+    """What the flight log says about the quality of its GPS fixes.
+
+    ``n_total`` counts the fixes actually used by the alignment and
+    ``n_fixed`` how many of them are differentially corrected. ``source`` is
+    ``'unknown'`` when the log carried no fix-status column, ``'rtk'`` when at
+    least one fix is corrected, and ``'gps'`` when statuses are present but
+    none of them is. That third case is the important one: it is the
+    difference between "we know the errors are metre-level" and "we do not
+    know", and the two must never be reported the same way.
+    """
+
+    n_total: int = 0
+    n_fixed: int = 0
+    source: str = "unknown"
+
+    @property
+    def available(self) -> bool:
+        """True when at least one differentially corrected fix is present."""
+        return self.n_fixed > 0
+
+    @property
+    def ratio(self) -> float:
+        """Fraction of fixes that are RTK/PPK fixed."""
+        if not self.n_total:
+            return 0.0
+        return self.n_fixed / self.n_total
+
+    @property
+    def expected_error_m(self) -> float | None:
+        """Nominal horizontal error of the fixes, or ``None`` when unknown.
+
+        These are order-of-magnitude planning numbers (3 cm for a fixed RTK
+        solution, ~3 m for a consumer receiver in open sky), used to keep the
+        alignment gate and the wording of the report honest — they are never
+        substituted for the measured residual.
+        """
+        if self.source == "unknown":
+            return None
+        return RTK_EXPECTED_ERROR_M if self.available else CONSUMER_GPS_EXPECTED_ERROR_M
+
+    def as_dict(self) -> dict:
+        """JSON-ready view for the alignment report."""
+        return {
+            "source": self.source,
+            "n_fixes": self.n_total,
+            "n_fixed": self.n_fixed,
+            "fixed_ratio": round(self.ratio, 4),
+            "expected_error_m": self.expected_error_m,
+        }
+
+
+def rtk_info_from_types(fix_types: list[object]) -> RtkInfo:
+    """Summarise fix-status cells into an :class:`RtkInfo`."""
+    tokens = [parse_fix_type(t) for t in fix_types]
+    known = [t for t in tokens if t]
+    n_fixed = sum(1 for t in known if t in RTK_FIX_TOKENS)
+    if not known:
+        source = "unknown"
+    elif n_fixed:
+        source = "rtk"
+    else:
+        source = "gps"
+    return RtkInfo(n_total=len(tokens), n_fixed=n_fixed, source=source)
+
+
+def rtk_fixed_mask(fix_types: list[object]) -> np.ndarray:
+    """Boolean mask of the differentially corrected fixes, in input order."""
+    return np.array([parse_fix_type(t) in RTK_FIX_TOKENS
+                     for t in fix_types], dtype=bool)
+
+
+def select_rtk_fixes(fixes: list, fix_types: list[object]) -> list:
+    """Keep only the RTK/PPK-fixed fixes, or all of them when none are.
+
+    The fallback matters: a log without a usable fix-status column is normal
+    for consumer drones, and silently returning an empty list there would
+    abort the alignment for no reason. Callers that care about the difference
+    inspect :class:`RtkInfo` (``source``) for it.
+    """
+    if len(fix_types) != len(fixes):
+        raise ValueError(
+            f"fix_types/fixes length mismatch: {len(fix_types)} vs {len(fixes)}")
+    mask = rtk_fixed_mask(fix_types)
+    if not mask.any():
+        return list(fixes)
+    return [fix for fix, keep in zip(fixes, mask) if keep]
+
+
 @dataclass(frozen=True)
 class PoseFixPair:
     """One accepted camera pose paired with the GPS fix nearest in time.
