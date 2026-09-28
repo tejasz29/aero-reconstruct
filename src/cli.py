@@ -42,7 +42,9 @@ from src.common.config_loader import get, load_config
 from src.common.logging_utils import get_logger, setup_logging
 from src.common.paths import PROJECT_ROOT, project_paths
 from src.calibration.runner import resolve_calibration
+from src.georef.align import ALIGNMENT_MODES
 from src.georef.gps import run_gps_conversion
+from src.georef.runner import run_alignment
 from src.sfm.runner import run_reconstruction
 from src.sfm.visualize import plot_trajectory, read_poses_csv
 from src.video.frame_extractor import extract_frames
@@ -359,6 +361,21 @@ def build_parser() -> argparse.ArgumentParser:
     cg.add_argument("--utm-zone", type=int, default=None,
                     help="override gps.utm_zone (1..60).")
     cg.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
+
+    at = sub.add_parser("align-trajectory",
+                        help="STEP 8: align camera poses to the metric GPS track "
+                             "-> aligned_trajectory.csv + transform/report.")
+    at.add_argument("--poses-csv", default=None,
+                    help="pose CSV (default: <paths.trajectory>/camera_poses.csv).")
+    at.add_argument("--gps-metric-csv", default=None,
+                    help="metric GPS CSV (default: <paths.georef>/gps_metric.csv).")
+    at.add_argument("--output-dir", default=None,
+                    help="output dir for the aligned trajectory (default: paths.georef).")
+    at.add_argument("--mode", default=None, choices=list(ALIGNMENT_MODES),
+                    help="override alignment.mode (3d | 2d).")
+    at.add_argument("--inlier-threshold", type=float, default=None,
+                    help="override alignment.inlier_threshold_m.")
+    at.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
