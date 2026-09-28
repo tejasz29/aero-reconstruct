@@ -24,13 +24,22 @@ from src.common.paths import PROJECT_ROOT
 from src.georef.align import (
     MIN_SIMILARITY_SAMPLES,
     AlignmentFit,
+    AlignmentResult,
     RtkInfo,
+    accuracy_summary,
     associate_by_timestamp,
+    build_aligned_rows,
     correspondence_arrays,
+    pairing_dt_stats,
     ransac_similarity,
     rtk_fixed_mask,
     rtk_info_from_types,
+    write_aligned_csv,
+    write_alignment_report,
+    write_transform_json,
 )
+from src.georef.gps import read_metric_table
+from src.sfm.visualize import read_poses_csv
 
 log = get_logger("sp3d.georef")
 
@@ -211,3 +220,62 @@ def fit_alignment(corr: Correspondences,
              policy.mode, fit.iterations,
              "" if fit.success else f" — REJECTED ({fit.reject_reason})")
     return fit
+
+
+def run_alignment(cfg: dict,
+                  poses_csv: str | Path | None = None,
+                  gps_csv: str | Path | None = None,
+                  output_dir: str | Path | None = None,
+                  mode: str | None = None,
+                  inlier_threshold_m: float | None = None) -> AlignmentResult:
+    """STEP 8 entry point: align the SfM trajectory to the metric GPS track.
+
+    Reads the STEP 5 poses and the STEP 7 metric fixes, fits the similarity
+    robustly, and writes the aligned trajectory, the transform and the audit
+    report. Tunables come from ``alignment.*`` in the config; ``mode`` and
+    ``inlier_threshold_m`` override it for a one-off run.
+    """
+    paths = resolve_paths(cfg, poses_csv, gps_csv, output_dir)
+    policy = resolve_policy(cfg, mode, inlier_threshold_m)
+    poses = read_poses_csv(paths.poses_csv)
+    table = read_metric_table(paths.gps_csv)
+    log.info("aligning %d poses against %d %s fixes (%s)", len(poses),
+             len(table.fixes), table.crs, paths.poses_csv.name)
+
+    corr = build_correspondences(poses, table, policy)
+    if corr.n_pairs < policy.min_correspondences:
+        raise ValueError(
+            f"only {corr.n_pairs} pose/GPS correspondences, need "
+            f"{policy.min_correspondences} (alignment.min_correspondences) — "
+            "check the flight log timestamps against the video")
+
+    fit = fit_alignment(corr, policy)
+    if not fit.success:
+        raise RuntimeError(
+            f"alignment fit rejected ({fit.reject_reason}); the trajectory is "
+            "not georeferenced")
+
+    rows = build_aligned_rows(poses, corr.pairs, fit, fit.transform, table.crs)
+    aligned_csv = write_aligned_csv(rows, paths.aligned_csv)
+    transform_json = write_transform_json(
+        fit.transform, paths.transform_json,
+        extra={"crs": table.crs, "zone": table.zone or "",
+               "alignment_rmse_m": round(fit.rmse_m, 4),
+               "n_inliers": fit.n_inliers,
+               "n_correspondences": fit.n_correspondences})
+    result = AlignmentResult(
+        transform=fit.transform, crs=table.crs, zone=table.zone,
+        mode=policy.mode, n_correspondences=corr.n_pairs,
+        n_inliers=fit.n_inliers, rmse_m=fit.rmse_m,
+        median_residual_m=fit.median_residual_m,
+        max_residual_m=fit.max_residual_m, rtk=corr.rtk,
+        accuracy=accuracy_summary(fit, corr.rtk, corr.n_pairs), rows=rows,
+        success=True, reject_reason="", aligned_csv=aligned_csv,
+        transform_json=transform_json, iterations=fit.iterations,
+        pairing=pairing_dt_stats(corr.pairs), poses_csv=str(paths.poses_csv),
+        gps_csv=str(paths.gps_csv), inlier_mask=fit.inlier_mask)
+    result.report_json = write_alignment_report(
+        result, paths.report_json, extra={"policy": policy.as_dict()})
+    log.info("alignment RMSE %.3f m over %d/%d inliers, scale %.4f m/unit",
+             fit.rmse_m, fit.n_inliers, corr.n_pairs, fit.transform.scale)
+    return result
