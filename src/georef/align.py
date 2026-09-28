@@ -626,6 +626,46 @@ def select_rtk_fixes(fixes: list, fix_types: list[object]) -> list:
     return [fix for fix, keep in zip(fixes, mask) if keep]
 
 
+def accuracy_summary(fit: "AlignmentFit", rtk: "RtkInfo",
+                     n_pairs: int = 0) -> dict:
+    """State what the alignment residual does and does not prove.
+
+    The RMSE of the pose-to-fix residual measures how well the fitted
+    similarity maps the trajectory onto the GPS track. It bounds the
+    *consistency* of the alignment, and nothing else: a 0.3 m RMSE computed
+    against uncorrected consumer GPS fixes is a statement about agreement
+    with metre-level data, not a promise of 0.3 m absolute accuracy. Only a
+    differentially corrected (RTK/PPK) fix set makes that claim legitimate,
+    and even then it is a claim about the trajectory — not about the depth,
+    the mesh or the surface downstream.
+
+    Returns the block written verbatim into ``alignment_report.json``.
+    """
+    n_pairs = n_pairs or fit.n_correspondences
+    if rtk.source == "unknown":
+        claim = ("GPS fix quality is unknown (no fix-status column in the "
+                 "log): the residual describes agreement with the track, "
+                 "not absolute accuracy")
+    elif rtk.available:
+        claim = (f"RTK/PPK fixes present ({rtk.n_fixed}/{rtk.n_total} fixed): "
+                 "the residual is a valid trajectory-accuracy statement")
+    else:
+        claim = ("uncorrected GPS fixes: the residual describes agreement "
+                 "with a metre-level track, not absolute accuracy")
+    return {
+        "alignment_rmse_m": round(fit.rmse_m, 4),
+        "median_residual_m": round(fit.median_residual_m, 4),
+        "max_residual_m": round(fit.max_residual_m, 4),
+        "n_correspondences": n_pairs,
+        "n_inliers": fit.n_inliers,
+        "inlier_ratio": round(fit.inlier_ratio, 4),
+        "gps_tier": rtk.source,
+        "gps_expected_error_m": rtk.expected_error_m,
+        "scale_m_per_sfm_unit": round(float(fit.transform.scale), 6),
+        "statement": claim,
+    }
+
+
 @dataclass(frozen=True)
 class PoseFixPair:
     """One accepted camera pose paired with the GPS fix nearest in time.
