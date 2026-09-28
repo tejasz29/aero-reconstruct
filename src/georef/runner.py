@@ -91,3 +91,46 @@ def resolve_policy(cfg: dict, mode: str | None = None,
         use_rtk_if_available=bool(
             get(cfg, "alignment.use_rtk_if_available", defaults.use_rtk_if_available)),
     )
+
+
+@dataclass(frozen=True)
+class AlignmentPaths:
+    """Input and output locations of one alignment run."""
+
+    poses_csv: Path
+    gps_csv: Path
+    aligned_csv: Path
+    transform_json: Path
+    report_json: Path
+
+
+def _absolute(path: str | Path) -> Path:
+    """Resolve a config-style relative path against the project root."""
+    candidate = Path(path)
+    return candidate if candidate.is_absolute() else PROJECT_ROOT / candidate
+
+
+def resolve_paths(cfg: dict, poses_csv: str | Path | None = None,
+                  gps_csv: str | Path | None = None,
+                  output_dir: str | Path | None = None) -> AlignmentPaths:
+    """Resolve the STEP 5 / STEP 7 inputs and the three alignment outputs.
+
+    The aligned trajectory lands next to the metric GPS file (it is data);
+    the transform and the report land under ``paths.reports`` with the rest of
+    the audit artefacts. ``output_name`` (``alignment.output_name``) drives all
+    three file names so several alignments can coexist in one project.
+    """
+    name = str(get(cfg, "alignment.output_name", "aligned_trajectory"))
+    traj_dir = _absolute(get(cfg, "paths.trajectory", "outputs/trajectory"))
+    georef_dir = Path(output_dir) if output_dir else _absolute(
+        get(cfg, "paths.georef", "outputs/georef"))
+    if not georef_dir.is_absolute():
+        georef_dir = PROJECT_ROOT / georef_dir
+    reports_dir = _absolute(get(cfg, "paths.reports", "outputs/reports"))
+    return AlignmentPaths(
+        poses_csv=Path(poses_csv) if poses_csv else traj_dir / "camera_poses.csv",
+        gps_csv=Path(gps_csv) if gps_csv else georef_dir / "gps_metric.csv",
+        aligned_csv=georef_dir / f"{name}.csv",
+        transform_json=reports_dir / f"{name}_transform.json",
+        report_json=reports_dir / f"{name}_report.json",
+    )
