@@ -511,6 +511,10 @@ def ransac_similarity(source: np.ndarray, target: np.ndarray,
                             min_samples):
         best.success = False
         best.reject_reason = "insufficient_inliers"
+        # A hypothesis that survived the residual gate on three points is not
+        # an alignment, whatever transform it carries. Hand back the identity
+        # so a rejected fit cannot be mistaken for a fitted one downstream.
+        best.transform = identity_transform()
     return best
 
 
