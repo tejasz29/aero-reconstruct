@@ -84,6 +84,14 @@ python -m src.cli show-trajectory
                              # STEP 6: plot camera_poses.csv -> 3D + top-down PNGs
                              #   in outputs/reports/ (headless, matplotlib Agg)
                              #   sanity-check the path before heavy steps
+python -m src.cli align-trajectory
+                             # STEP 8: fit the similarity Xg = s*R*Xv + t that
+                             #   maps the SfM trajectory onto gps_metric.csv
+                             #   (RANSAC + closed-form refinement, RTK-aware)
+                             #   resolves the monocular scale
+                             #   outputs/georef/aligned_trajectory.csv
+                             #   + reports/aligned_trajectory_{transform,report}.json
+                             #   exits 1 when the fit is rejected
 ```
 
 Pipeline-stage subcommands (`preprocess`, `reconstruct`, …) are
@@ -119,6 +127,14 @@ and resume paths, backend fallback.
 headless PNG output incl. single-pose and rejected-only edge cases, CLI surface.
 (STEP 7) GPS reader + column aliases, WGS84 bounds validation, geodesic
 distance ground truth, ENU/UTM conversions, CRS auto-resolution, runner e2e.
+(STEP 8) transform contract + JSON round-trip, Umeyama recovery of a known
+`s/R/t` on a 3D path, planar (nadir) fit and its documented limit, degeneracy
+refusal (collinear/mirrored), RANSAC outlier rejection with named outliers,
+pose/GPS association and the time gate, RTK tier handling + accuracy wording,
+metric-CSV read-back, runner e2e (3D, planar, RTK, rejected) and the CLI
+surface including its non-zero exit on a rejected fit.
+
+Current total: **180 tests passing**.
 
 ## 6. Pipeline status
 
@@ -131,8 +147,8 @@ distance ground truth, ENU/UTM conversions, CRS auto-resolution, runner e2e.
 | 5 | SfM baseline (poses) | ✅ done (classical OpenCV; COLMAP fallback) |
 | 6 | Trajectory visualisation | ✅ done |
 | 7 | GPS parsing + metric conversion | ✅ done |
-| 8 | Visual ↔ GPS alignment | ⬜ next |
-| 9–10 | Learned depth → 3D | ⬜ |
+| 8 | Visual ↔ GPS alignment | ✅ done (RANSAC + Umeyama refinement, RTK-aware) |
+| 9–10 | Learned depth → 3D | ⬜ next |
 | 11–12 | Fusion + filtering | ⬜ |
 | 13 | Dynamic-object segmentation | ⬜ |
 | 14–15 | Mesh + texture | ⬜ |
@@ -140,7 +156,7 @@ distance ground truth, ENU/UTM conversions, CRS auto-resolution, runner e2e.
 | 18–19 | Viewer + backend | ⬜ |
 | 20 | Near-real-time optimisation | ⬜ (after offline works) |
 
-**Next recommended step: STEP 8** — Visual ↔ GPS alignment
-(`src/georef/align.py`): similar-transform `X_g = s·R·X_v + t` over the STEP 5
-poses and STEP 7 metric `gps_metric.csv` to resolve the monocular scale and
-global frame for the reconstruction.
+**Next recommended step: STEP 9** — learned monocular depth
+(`src/depth/`): Depth-Anything-style relative depth + confidence per
+keyframe. Depth is **not** metric; the STEP 8 scale plus the camera poses
+are what constrain it in STEP 10.
