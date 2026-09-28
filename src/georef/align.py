@@ -626,6 +626,51 @@ def select_rtk_fixes(fixes: list, fix_types: list[object]) -> list:
     return [fix for fix, keep in zip(fixes, mask) if keep]
 
 
+def metric_xyz(fix) -> np.ndarray:
+    """``(easting, northing, up)`` of a metric fix, in metres."""
+    return np.array([fix.easting_m, fix.northing_m, fix.up_m],
+                    dtype=np.float64)
+
+
+def correspondence_arrays(pairs: list) -> tuple[np.ndarray, np.ndarray]:
+    """``(visual_centres, global_points)`` for a list of :class:`PoseFixPair`.
+
+    The visual side is the STEP 5 camera centre in SfM units (arbitrary scale,
+    origin at the first accepted keyframe); the global side is the STEP 7
+    metric position in metres. Those two arrays are the *only* input the
+    fitters need, which is what makes the whole alignment testable against a
+    known ground-truth ``(s, R, t)`` without touching video, GPS or a drone.
+    """
+    if not pairs:
+        return np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.float64)
+    for index, pair in enumerate(pairs):
+        if getattr(pair.pose, "C", None) is None:
+            raise ValueError(
+                f"pair {index} (frame {getattr(pair.pose, 'frame_id', '?')}) "
+                "has no camera centre — it cannot be aligned")
+    source = np.array([np.asarray(p.pose.C, dtype=np.float64) for p in pairs])
+    target = np.array([metric_xyz(p.fix) for p in pairs])
+    return _as_point_arrays(source, target)
+
+
+def pairing_dt_stats(pairs: list) -> dict:
+    """Timestamp-matching quality of the pose/GPS association, in seconds.
+
+    Separated from the geometric residual on purpose: a large residual with
+    small ``dt`` means the trajectory or the GPS is bad, while a large ``dt``
+    on a fast-moving aircraft means the two clocks disagree and the pairing
+    itself is the error. Conflating them hides which one to fix.
+    """
+    if not pairs:
+        return {"n_pairs": 0, "max_abs_dt_s": 0.0, "median_abs_dt_s": 0.0}
+    abs_dt = np.abs([p.dt_s for p in pairs])
+    return {
+        "n_pairs": len(pairs),
+        "max_abs_dt_s": round(float(np.max(abs_dt)), 4),
+        "median_abs_dt_s": round(float(np.median(abs_dt)), 4),
+    }
+
+
 def accuracy_summary(fit: "AlignmentFit", rtk: "RtkInfo",
                      n_pairs: int = 0) -> dict:
     """State what the alignment residual does and does not prove.
