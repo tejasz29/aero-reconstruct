@@ -790,6 +790,22 @@ def write_transform_json(transform: "SimilarityTransform", path: str | Path,
     return str(out.resolve())
 
 
+def rejected_fit(n_correspondences: int, reason: str) -> AlignmentFit:
+    """A fit that explicitly did not happen.
+
+    Used when the runner cannot even attempt a solve (too few pose/GPS
+    pairs). Returning the identity transform with ``success=False`` and a
+    reason — instead of raising or, worse, returning a plausible-looking fit
+    — is what keeps a downstream STEP 10/16 from georeferencing a
+    reconstruction against a frame that was never fitted.
+    """
+    return AlignmentFit(
+        transform=identity_transform(), n_correspondences=int(n_correspondences),
+        inlier_mask=np.zeros(int(n_correspondences), dtype=bool), n_inliers=0,
+        rmse_m=0.0, median_residual_m=0.0, max_residual_m=0.0, success=False,
+        reject_reason=reason)
+
+
 def write_alignment_report(result: "AlignmentResult", path: str | Path,
                            extra: dict | None = None) -> str:
     """Write ``alignment_report.json``; returns the absolute path.

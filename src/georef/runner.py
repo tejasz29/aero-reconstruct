@@ -32,6 +32,7 @@ from src.georef.align import (
     correspondence_arrays,
     pairing_dt_stats,
     ransac_similarity,
+    rejected_fit,
     rtk_fixed_mask,
     rtk_info_from_types,
     write_aligned_csv,
@@ -222,6 +223,39 @@ def fit_alignment(corr: Correspondences,
     return fit
 
 
+def _write_rejected(paths: AlignmentPaths, policy: AlignmentPolicy, mode: str,
+                    crs: str, zone: str | None, poses_csv: str, gps_csv: str,
+                    rtk: RtkInfo, n_pairs: int, reason: str,
+                    iterations: int = 0) -> AlignmentResult:
+    """Record a failed alignment instead of aborting the pipeline.
+
+    A run that cannot be aligned still has to be explainable: the report is
+    written with ``success: false``, the reason, the transform JSON is
+    stamped ``status: rejected``, and no aligned trajectory is produced —
+    a CSV full of identity-transformed positions would look like data while
+    meaning nothing.
+    """
+    fit = rejected_fit(n_pairs, reason)
+    log.error("alignment REJECTED (%s): %d correspondences — nothing is "
+              "georeferenced", reason, n_pairs)
+    transform_json = write_transform_json(
+        fit.transform, paths.transform_json,
+        extra={"status": "rejected", "reject_reason": reason, "crs": crs,
+               "n_correspondences": n_pairs})
+    result = AlignmentResult(
+        transform=fit.transform, crs=crs, zone=zone, mode=mode,
+        n_correspondences=n_pairs, n_inliers=0, rmse_m=0.0,
+        median_residual_m=0.0, max_residual_m=0.0, rtk=rtk,
+        accuracy=accuracy_summary(fit, rtk, n_pairs), rows=[],
+        success=False, reject_reason=reason, aligned_csv="",
+        transform_json=transform_json, iterations=iterations,
+        pairing={"n_pairs": n_pairs}, poses_csv=poses_csv, gps_csv=gps_csv,
+        inlier_mask=fit.inlier_mask)
+    result.report_json = write_alignment_report(
+        result, paths.report_json, extra={"policy": policy.as_dict()})
+    return result
+
+
 def run_alignment(cfg: dict,
                   poses_csv: str | Path | None = None,
                   gps_csv: str | Path | None = None,
@@ -234,6 +268,12 @@ def run_alignment(cfg: dict,
     robustly, and writes the aligned trajectory, the transform and the audit
     report. Tunables come from ``alignment.*`` in the config; ``mode`` and
     ``inlier_threshold_m`` override it for a one-off run.
+
+    A run that cannot be aligned returns ``success=False`` with a
+    ``reject_reason`` (``too_few_correspondences``, ``no_valid_hypothesis``,
+    ``insufficient_inliers``) instead of raising: the caller decides whether
+    an ungeoreferenced reconstruction is still worth writing out, and the
+    report always says which case it is.
     """
     paths = resolve_paths(cfg, poses_csv, gps_csv, output_dir)
     policy = resolve_policy(cfg, mode, inlier_threshold_m)
@@ -244,16 +284,17 @@ def run_alignment(cfg: dict,
 
     corr = build_correspondences(poses, table, policy)
     if corr.n_pairs < policy.min_correspondences:
-        raise ValueError(
-            f"only {corr.n_pairs} pose/GPS correspondences, need "
-            f"{policy.min_correspondences} (alignment.min_correspondences) — "
-            "check the flight log timestamps against the video")
+        return _write_rejected(
+            paths, policy, policy.mode, table.crs, table.zone,
+            str(paths.poses_csv), str(paths.gps_csv), corr.rtk, corr.n_pairs,
+            "too_few_correspondences")
 
     fit = fit_alignment(corr, policy)
     if not fit.success:
-        raise RuntimeError(
-            f"alignment fit rejected ({fit.reject_reason}); the trajectory is "
-            "not georeferenced")
+        return _write_rejected(
+            paths, policy, policy.mode, table.crs, table.zone,
+            str(paths.poses_csv), str(paths.gps_csv), corr.rtk, corr.n_pairs,
+            fit.reject_reason or "insufficient_inliers", iterations=fit.iterations)
 
     rows = build_aligned_rows(poses, corr.pairs, fit, fit.transform, table.crs)
     aligned_csv = write_aligned_csv(rows, paths.aligned_csv)
