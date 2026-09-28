@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -203,6 +203,11 @@ class AlignmentResult:
     aligned_csv: str = ""
     transform_json: str = ""
     report_json: str = ""
+    iterations: int = 0
+    pairing: dict = field(default_factory=dict)
+    poses_csv: str = ""
+    gps_csv: str = ""
+    inlier_mask: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool))
 
     @property
     def inlier_ratio(self) -> float:
@@ -782,6 +787,54 @@ def write_transform_json(transform: "SimilarityTransform", path: str | Path,
     if extra:
         payload.update(extra)
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return str(out.resolve())
+
+
+def write_alignment_report(result: "AlignmentResult", path: str | Path,
+                           extra: dict | None = None) -> str:
+    """Write ``alignment_report.json``; returns the absolute path.
+
+    The report is the auditable record of the alignment: inputs, tunables,
+    inlier statistics, the transform, the GPS tier, and the accuracy wording.
+    A failed fit is reported with the same completeness as a successful one —
+    ``success: false`` plus the reason — because "the alignment did not
+    happen" is the single most important thing a downstream reader can be
+    told.
+    """
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    report = {
+        "success": bool(result.success),
+        "reject_reason": result.reject_reason,
+        "mode": result.mode,
+        "crs": result.crs,
+        "zone": result.zone or "",
+        "inputs": {
+            "poses_csv": result.poses_csv,
+            "gps_metric_csv": result.gps_csv,
+        },
+        "correspondences": result.n_correspondences,
+        "inliers": result.n_inliers,
+        "inlier_ratio": round(result.inlier_ratio, 4),
+        "ransac_iterations": result.iterations,
+        "residual_m": {
+            "rmse": round(result.rmse_m, 4),
+            "median": round(result.median_residual_m, 4),
+            "max": round(result.max_residual_m, 4),
+        },
+        "pairing": result.pairing,
+        "transform": transform_to_dict(result.transform),
+        "scale_m_per_sfm_unit": round(float(result.transform.scale), 6),
+        "rtk": result.rtk.as_dict(),
+        "accuracy": result.accuracy,
+        "outputs": {
+            "aligned_trajectory_csv": result.aligned_csv,
+            "transform_json": result.transform_json,
+        },
+    }
+    if extra:
+        report.update(extra)
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return str(out.resolve())
 
 
