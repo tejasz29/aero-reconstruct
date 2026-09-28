@@ -4,7 +4,7 @@ Source of truth for build order. A step is **done** only when: implemented,
 tested green, demoed on real or synthetic data, README status updated, and
 committed + pushed. Never start the next step on a broken tree.
 
-**Progress: STEPS 1–7 done · STEP 8 next · 96/96 tests passing.**
+**Progress: STEPS 1–8 done · STEP 9 next · 180/180 tests passing.**
 
 Conventions every step follows: tunables live in `configs/default.yaml`
 (never hard-coded); every stage logs via `src.common.logging_utils`;
@@ -222,15 +222,56 @@ runner e2e outputs, CLI parser).
 **Commits (33):** STEP 7 split into 33 granular commits, pushed to origin/main
 (see `git log --oneline 1d5e026..HEAD`).
 
-## STEP 8 — Visual ↔ GPS alignment ⬜
+## STEP 8 — Visual ↔ GPS alignment ✅ done
 
-**What:** Resolve SfM scale ambiguity: `X_global ≈ s·R·X_visual + t` via robust
-similarity alignment (RANSAC + least-squares refinement). RTK/PPK path when
-available. **Outputs:** aligned trajectory, transformation params, alignment
-error. **Files:** `src/georef/align.py` · CLI `align-trajectory`. **Tests:**
-recover known s/R/t from synthetic point sets with outliers.
+**What:** Resolve the SfM scale ambiguity: `X_global ≈ s·R·X_visual + t` via
+robust similarity alignment (RANSAC + least-squares refinement). RTK/PPK path
+when available.
+**Algorithm:** pair accepted poses with metric fixes by nearest timestamp
+(one-to-one, `alignment.max_time_gap_s` gate) → keep only RTK/PPK-fixed
+fixes when the log carries a fix-status column and tighten the residual gate
+from 2 m to 0.5 m → RANSAC over minimal samples scored by inlier count (ties
+broken by median residual) → re-fit the winners in closed form (Umeyama 3D,
+or a yaw-only planar solve for a nadir pass) → re-evaluate the inlier mask →
+report RMSE/median/max. Degenerate paths (coincident or collinear centres)
+and too few inliers are *refused* with an auditable `reject_reason`, and a
+refused fit carries the identity transform so nothing downstream can
+georeference with it. `mode: 2d` is exact for a flat nadir pass and wrong for
+a tilted one — the residual is what reveals it.
+**Accuracy policy:** the reported RMSE describes *how well the trajectory was
+aligned to the GPS track*. `accuracy_summary` states, per run, whether the
+fixes were RTK/PPK-fixed, plain consumer GPS, or unknown, because a residual
+against metre-level GPS is not a centimetre-level absolute-accuracy claim.
+**Outputs:** `outputs/georef/aligned_trajectory.csv` (one row per STEP 5
+pose: visual centre, aligned centre, matched GPS target, `dt`, inlier flag,
+residual, re-expressed rotation) ·
+`outputs/reports/aligned_trajectory_transform.json` (the `s/R/t` contract for
+STEPS 10/16 and the viewer) · `outputs/reports/aligned_trajectory_report.json`
+(inputs, policy, inlier stats, pairing stats, GPS tier, accuracy wording).
+**Files:** `src/georef/align.py` (transform contract, Umeyama + planar
+solvers, residuals, RANSAC, association, RTK policy, rows/CSV/JSON writers) ·
+`src/georef/runner.py` (config policy + path resolution, pairing, fit,
+artefacts, rejection paths) · `src/georef/gps.py` += `read_metric_table` /
+`read_metric_csv` · `src/cli.py` += `align-trajectory` · config +=
+`alignment.*` (mode, ransac_iterations, inlier_threshold_m,
+min_correspondences, min_inliers, max_time_gap_s, rtk_inlier_threshold_m,
+use_rtk_if_available, output_name).
+**Tests:** 180 passed (+84: transform contract/serialisation, known `s/R/t`
+recovery on a 3D path, planar fit + its tilt limit, collinear/mirrored
+refusal, RANSAC outlier rejection with named outliers and determinism,
+refinement improvement, pose/GPS association + time gate, fix-status
+normalisation + RTK selection + accuracy wording, metric-CSV read-back,
+runner e2e in 3D/planar/RTK/rejected modes, CLI surface and exit code).
+**Verify:** `python -m src.cli align-trajectory` (config-driven; `--poses-csv`,
+`--gps-metric-csv`, `--output-dir`, `--mode`, `--inlier-threshold` override)
+→ check `outputs/georef/aligned_trajectory.csv` + both JSON artefacts; a
+rejected fit prints the reason and exits 1.
 
-## STEP 9 — Learned depth inference ⬜
+**Commits (40):** STEP 8 split into granular commits (association, fit,
+refinement, RANSAC, RTK, accuracy, writers, runner, CLI, tests) — see
+`git log --oneline origin/main..HEAD`.
+
+## STEP 9 — Learned depth inference ⬜ next
 
 **What:** Monocular depth (+ confidence) per keyframe via Depth Anything
 family. Depth is NOT metric — constrained later by SfM/GPS scale.
