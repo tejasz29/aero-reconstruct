@@ -21,6 +21,16 @@ from pathlib import Path
 from src.common.config_loader import get
 from src.common.logging_utils import get_logger
 from src.common.paths import PROJECT_ROOT
+from src.georef.align import (
+    MIN_SIMILARITY_SAMPLES,
+    AlignmentFit,
+    RtkInfo,
+    associate_by_timestamp,
+    correspondence_arrays,
+    ransac_similarity,
+    rtk_fixed_mask,
+    rtk_info_from_types,
+)
 
 log = get_logger("sp3d.georef")
 
@@ -134,3 +144,70 @@ def resolve_paths(cfg: dict, poses_csv: str | Path | None = None,
         transform_json=reports_dir / f"{name}_transform.json",
         report_json=reports_dir / f"{name}_report.json",
     )
+
+
+@dataclass(frozen=True)
+class Correspondences:
+    """Pose/GPS pairs ready for the fit, plus what the GPS tier turned out to be."""
+
+    pairs: list
+    rtk: RtkInfo
+    n_fixes: int
+    n_poses: int
+
+    @property
+    def n_pairs(self) -> int:
+        return len(self.pairs)
+
+
+def build_correspondences(poses: list, table: "MetricTable",
+                          policy: AlignmentPolicy) -> Correspondences:
+    """Pair the accepted poses with metric fixes, RTK-first when available.
+
+    The RTK filter runs *before* the pairing, not after: a log that is 90 %
+    RTK-fixed and 10 % float has no business contributing its float fixes to
+    a centimetre-scale alignment. When no fix is corrected — the normal
+    consumer-drone case — every fix is kept and the tier is reported as such,
+    because dropping the whole log would be worse than aligning to metre-level
+    data and saying so.
+    """
+    mask = rtk_fixed_mask(table.fix_types) if policy.use_rtk_if_available else None
+    if mask is not None and bool(mask.any()):
+        fixes = [fix for fix, keep in zip(table.fixes, mask) if keep]
+        types = [t for t, keep in zip(table.fix_types, mask) if keep]
+        log.info("RTK/PPK fixes detected: using %d of %d fixes", len(fixes),
+                 len(table.fixes))
+    else:
+        fixes, types = list(table.fixes), list(table.fix_types)
+    info = rtk_info_from_types(types)
+    pairs = associate_by_timestamp(poses, fixes, max_gap_s=policy.max_time_gap_s)
+    log.info("paired %d of %d poses with fixes (max |dt| <= %.2f s)", len(pairs),
+             sum(1 for p in poses if getattr(p, "kept", False)),
+             policy.max_time_gap_s)
+    return Correspondences(pairs=pairs, rtk=info, n_fixes=len(fixes), n_poses=len(poses))
+
+
+def fit_alignment(corr: Correspondences,
+                  policy: AlignmentPolicy) -> "AlignmentFit":
+    """Fit the visual->global similarity under ``policy``.
+
+    Two gates, and they are different kinds of gate: the residual gate
+    (tightened to RTK class when corrected fixes are present) decides which
+    correspondences are believable, and ``min_inliers`` decides whether
+    enough of them survived to say anything at all. A fit that clears the
+    first with three points and four thousand outliers is not an alignment.
+    """
+    source, target = correspondence_arrays(corr.pairs)
+    gate = policy.gate_m(corr.rtk)
+    fit = ransac_similarity(
+        source, target, inlier_threshold_m=gate, iterations=policy.iterations,
+        min_samples=max(MIN_SIMILARITY_SAMPLES, 2 if policy.mode == "2d" else 3),
+        mode=policy.mode)
+    if fit.success and fit.n_inliers < policy.min_inliers:
+        fit.success = False
+        fit.reject_reason = "insufficient_inliers"
+    log.info("alignment fit: %d/%d inliers at a %.2f m gate (mode=%s, %d "
+             "iterations)%s", fit.n_inliers, fit.n_correspondences, gate,
+             policy.mode, fit.iterations,
+             "" if fit.success else f" — REJECTED ({fit.reject_reason})")
+    return fit
