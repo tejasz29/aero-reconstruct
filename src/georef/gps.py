@@ -359,6 +359,90 @@ def resolve_crs(fixes: list[GPSFix], local_crs: str = "auto",
     return ("enu", None) if extent <= auto_crs_max_extent_m else ("utm", zone)
 
 
+@dataclass(frozen=True)
+class MetricTable:
+    """A parsed ``gps_metric.csv`` back into memory.
+
+    STEP 8 aligns the SfM trajectory against this file, so the reader keeps
+    the two things a raw list of fixes would throw away: the CRS the
+    coordinates are in (``crs``/``zone``) and the per-fix quality status
+    (``fix_types``, empty strings where the log carried none).
+    """
+
+    fixes: list[MetricFix]
+    crs: str
+    zone: Optional[str]
+    fix_types: list[str]
+
+
+#: Optional columns that carry a fix-status token, in alias order. Absent
+#: columns are simply reported as unknown rather than treated as consumer GPS.
+_FIX_TYPE_ALIASES = ("fix_type", "rtk_status", "fix_status", "rtk", "quality",
+                     "gps_quality")
+
+_METRIC_REQUIRED_COLUMNS = ("timestamp_s", "easting_m", "northing_m", "up_m")
+
+
+def read_metric_table(path: str | Path) -> MetricTable:
+    """Read a STEP 7 ``gps_metric.csv`` back into a :class:`MetricTable`.
+
+    The geodetic columns are optional on the way back (STEP 10+ only needs
+    metres), but ``timestamp_s`` and the three metric columns are required:
+    without them there is nothing to align. A fix-status column is used when
+    present so STEP 8 can tell an RTK flight from a consumer one.
+    """
+    csv_path = Path(path)
+    if not csv_path.is_file():
+        raise FileNotFoundError(
+            f"metric GPS CSV not found: {csv_path} — run convert-gps first")
+    with open(csv_path, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = [h.strip() for h in (reader.fieldnames or [])]
+        lowered = {h.lower(): h for h in fieldnames if h}
+        missing = [c for c in _METRIC_REQUIRED_COLUMNS if c not in lowered]
+        if missing:
+            raise ValueError(
+                f"metric GPS CSV {csv_path} is missing column(s) "
+                f"{', '.join(missing)} — expected the STEP 7 header")
+        type_column = next((lowered[a] for a in _FIX_TYPE_ALIASES
+                            if a in lowered), None)
+        crs_cell = lowered.get("crs")
+        zone_cell = lowered.get("zone")
+
+        fixes: list[MetricFix] = []
+        fix_types: list[str] = []
+        crs = "unknown"
+        zone: Optional[str] = None
+        for row in reader:
+            if not any((row.get(h) or "").strip() for h in fieldnames):
+                continue
+            if crs_cell:
+                crs = (row.get(crs_cell) or crs).strip() or crs
+            if zone_cell:
+                zone = (row.get(zone_cell) or "").strip() or None
+            fix_types.append((row.get(type_column) or "") if type_column else "")
+            fixes.append(MetricFix(
+                timestamp_s=float(row[lowered["timestamp_s"]]),
+                latitude=float(row[lowered["latitude"]])
+                if lowered.get("latitude") else float("nan"),
+                longitude=float(row[lowered["longitude"]])
+                if lowered.get("longitude") else float("nan"),
+                altitude_m=float(row[lowered["altitude_m"]])
+                if lowered.get("altitude_m") else float("nan"),
+                easting_m=float(row[lowered["easting_m"]]),
+                northing_m=float(row[lowered["northing_m"]]),
+                up_m=float(row[lowered["up_m"]]),
+            ))
+    if not fixes:
+        raise ValueError(f"no metric GPS fixes found in {csv_path}")
+    return MetricTable(fixes=fixes, crs=crs, zone=zone, fix_types=fix_types)
+
+
+def read_metric_csv(path: str | Path) -> list[MetricFix]:
+    """Just the fixes of a STEP 7 ``gps_metric.csv``, in file order."""
+    return read_metric_table(path).fixes
+
+
 _METRIC_CSV_COLUMNS = (
     "timestamp_s", "latitude", "longitude", "altitude_m",
     "easting_m", "northing_m", "up_m", "crs", "zone",
