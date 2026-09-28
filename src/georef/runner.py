@@ -23,6 +23,7 @@ from src.common.logging_utils import get_logger
 from src.common.paths import PROJECT_ROOT
 from src.georef.align import (
     MIN_SIMILARITY_SAMPLES,
+    identity_transform,
     AlignmentFit,
     AlignmentResult,
     RtkInfo,
@@ -216,6 +217,9 @@ def fit_alignment(corr: Correspondences,
     if fit.success and fit.n_inliers < policy.min_inliers:
         fit.success = False
         fit.reject_reason = "insufficient_inliers"
+        # Same contract as the RANSAC gate: a rejected fit never carries a
+        # usable transform, so nothing downstream can georeference with it.
+        fit.transform = identity_transform()
     log.info("alignment fit: %d/%d inliers at a %.2f m gate (mode=%s, %d "
              "iterations)%s", fit.n_inliers, fit.n_correspondences, gate,
              policy.mode, fit.iterations,
