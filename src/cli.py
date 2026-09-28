@@ -27,6 +27,9 @@ or, after ``pip install -e .``::
   figures under outputs/reports/ (sanity-check before heavy steps).
 * ``convert-gps`` — STEP 7: project the GPS log into metric coordinates
   (ENU or UTM) -> outputs/georef/gps_metric.csv + report.
+* ``align-trajectory`` — STEP 8: fit the similarity that maps the SfM
+  trajectory onto the metric GPS track, resolving the monocular scale
+  -> outputs/georef/aligned_trajectory.csv + transform/report.
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """
@@ -292,6 +295,39 @@ def cmd_convert_gps(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_align_trajectory(args: argparse.Namespace) -> int:
+    """STEP 8 — align the SfM trajectory to the metric GPS track."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    poses_csv = Path(args.poses_csv) if args.poses_csv else None
+    gps_csv = Path(args.gps_metric_csv) if args.gps_metric_csv else None
+    output_dir = Path(args.output_dir) if args.output_dir else None
+
+    result = run_alignment(cfg, poses_csv=poses_csv, gps_csv=gps_csv,
+                           output_dir=output_dir, mode=args.mode,
+                           inlier_threshold_m=args.inlier_threshold)
+    tier = result.rtk.source
+    if not result.success:
+        print(f"alignment: REJECTED ({result.reject_reason}) with "
+              f"{result.n_correspondences} correspondences")
+        print(f"report  : {result.report_json}")
+        print("note    : the trajectory is NOT georeferenced — fix the cause "
+              "above before STEP 10")
+        return 1
+    print(f"mode    : {result.mode}  crs: {result.crs} "
+          f"{'zone ' + result.zone if result.zone else ''}")
+    print(f"pairs   : {result.n_inliers} inliers / {result.n_correspondences} "
+          f"({result.inlier_ratio * 100:.1f}%)")
+    print(f"scale   : {result.scale:.4f} m per SfM unit")
+    print(f"rmse    : {result.rmse_m:.3f} m (median {result.median_residual_m:.3f}, "
+          f"max {result.max_residual_m:.3f})")
+    print(f"gps     : {tier} tier — {result.accuracy['statement']}")
+    print(f"aligned : {result.aligned_csv}")
+    print(f"report  : {result.report_json}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sp3d",
@@ -388,7 +424,8 @@ def main(argv: list[str] | None = None) -> int:
                 "calibrate": cmd_calibrate,
                 "reconstruct-poses": cmd_reconstruct_poses,
                 "show-trajectory": cmd_show_trajectory,
-                "convert-gps": cmd_convert_gps}
+                "convert-gps": cmd_convert_gps,
+                "align-trajectory": cmd_align_trajectory}
     return handlers[args.command](args)
 
 
