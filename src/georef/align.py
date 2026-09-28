@@ -671,6 +671,117 @@ def pairing_dt_stats(pairs: list) -> dict:
     }
 
 
+#: Column order of ``aligned_trajectory.csv``. Every pose of the STEP 5 CSV
+#: appears, including rejected ones: a row the reader cannot explain is
+#: exactly the audit trail this project wants, and the aligned pose of a
+#: rejected keyframe is unknown rather than zero.
+ALIGNED_CSV_COLUMNS = [
+    "frame_id", "source_index", "timestamp_s", "filename", "kept",
+    "gps_timestamp_s", "dt_s", "inlier", "residual_m",
+    "vx", "vy", "vz",
+    "gx", "gy", "gz",
+    "easting_m", "northing_m", "up_m",
+    "r00", "r01", "r02", "r10", "r11", "r12", "r20", "r21", "r22",
+    "crs",
+]
+
+_ROTATION_FIELDS = ("r00", "r01", "r02", "r10", "r11", "r12", "r20", "r21", "r22")
+
+
+def build_aligned_rows(poses: list, pairs: list, fit: "AlignmentFit",
+                       transform: "SimilarityTransform", crs: str) -> list[dict]:
+    """One dict per STEP 5 pose: visual centre, aligned centre, GPS target.
+
+    The pose list is the spine, not the correspondence list: a keyframe that
+    STEP 5 rejected (or that found no GPS fix within the time gate) still
+    gets a row, with the fields that are genuinely unknown left empty. That
+    keeps ``aligned_trajectory.csv`` a complete, diffable successor of
+    ``camera_poses.csv`` — the STEP 6 plots and STEP 16 georeferencing read
+    it directly.
+
+    ``inlier``/``residual_m`` come from the RANSAC fit, so the file records
+    which correspondences the reported transform actually rests on.
+    """
+    pair_by_frame = {p.pose.frame_id: (i, p) for i, p in enumerate(pairs)}
+    mask = np.asarray(fit.inlier_mask, dtype=bool).reshape(-1)
+    aligned_xyz = (apply_similarity(transform, np.array(
+        [np.asarray(p.pose.C, dtype=np.float64) for p in pairs]))
+        if pairs else np.zeros((0, 3), dtype=np.float64))
+    residuals = (similarity_residuals(transform, *correspondence_arrays(pairs))
+                 if pairs else np.zeros(0, dtype=np.float64))
+
+    rows: list[dict] = []
+    for pose in poses:
+        row = {key: "" for key in ALIGNED_CSV_COLUMNS}
+        row.update({
+            "frame_id": pose.frame_id,
+            "source_index": pose.source_index,
+            "timestamp_s": f"{pose.timestamp_s:.6f}",
+            "filename": pose.filename,
+            "kept": int(bool(pose.kept)),
+            "crs": crs,
+        })
+        if getattr(pose, "C", None) is not None:
+            row.update({f"v{axis}": f"{float(v):.6f}"
+                        for axis, v in zip("xyz", np.asarray(pose.C, dtype=np.float64))})
+        match = pair_by_frame.get(pose.frame_id)
+        if match is None:
+            rows.append(row)
+            continue
+        index, pair = match
+        row["gps_timestamp_s"] = f"{pair.fix.timestamp_s:.6f}"
+        row["dt_s"] = f"{pair.dt_s:+.4f}"
+        row["inlier"] = int(bool(mask[index])) if index < mask.size else 0
+        row["residual_m"] = f"{float(residuals[index]):.4f}"
+        row.update({f"g{axis}": f"{float(v):.6f}"
+                    for axis, v in zip("xyz", aligned_xyz[index])})
+        row.update({"easting_m": f"{pair.fix.easting_m:.6f}",
+                    "northing_m": f"{pair.fix.northing_m:.6f}",
+                    "up_m": f"{pair.fix.up_m:.6f}"})
+        if getattr(pose, "R_wc", None) is not None:
+            R_gc = apply_similarity_to_rotation(transform, pose.R_wc)
+            row.update({name: f"{float(v):.9f}"
+                        for name, v in zip(_ROTATION_FIELDS, R_gc.ravel())})
+        rows.append(row)
+    return rows
+
+
+def write_aligned_csv(rows: list[dict], path: str | Path) -> str:
+    """Write ``aligned_trajectory.csv``; returns the absolute path string.
+
+    Written in :data:`ALIGNED_CSV_COLUMNS` order regardless of the dict key
+    order, with a fixed six-decimal precision: the file is meant to be diffed
+    between runs and read by STEP 16 and the viewer, not parsed by eyeball.
+    """
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=ALIGNED_CSV_COLUMNS,
+                                extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row.get(key, "") for key in ALIGNED_CSV_COLUMNS})
+    return str(out.resolve())
+
+
+def write_transform_json(transform: "SimilarityTransform", path: str | Path,
+                         extra: dict | None = None) -> str:
+    """Write ``alignment_transform.json``; returns the absolute path.
+
+    The transform is the contract between STEP 8 and everything downstream
+    (STEP 10 unprojection, STEP 16 georeferencing, the viewer), so it is
+    stored on its own, in metres, with the model spelled out — not buried in
+    the run report. ``extra`` adds provenance keys (CRS, RMSE, pose count).
+    """
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    payload = transform_to_dict(transform)
+    if extra:
+        payload.update(extra)
+    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return str(out.resolve())
+
+
 def accuracy_summary(fit: "AlignmentFit", rtk: "RtkInfo",
                      n_pairs: int = 0) -> dict:
     """State what the alignment residual does and does not prove.
