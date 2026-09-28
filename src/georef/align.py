@@ -496,3 +496,61 @@ def ransac_similarity(source: np.ndarray, target: np.ndarray,
         best.success = False
         best.reject_reason = "insufficient_inliers"
     return best
+
+
+@dataclass(frozen=True)
+class PoseFixPair:
+    """One accepted camera pose paired with the GPS fix nearest in time.
+
+    ``dt_s`` is ``fix.timestamp_s - pose.timestamp_s`` (signed), kept so the
+    report can show whether the pairing or the flight dynamics dominated the
+    alignment residual.
+    """
+
+    pose: "CameraPose"
+    fix: "MetricFix"
+    dt_s: float
+
+
+def associate_by_timestamp(poses: list, fixes: list,
+                           max_gap_s: float = 0.5) -> list[PoseFixPair]:
+    """Pair accepted camera poses with GPS fixes by nearest timestamp.
+
+    The video and the flight log are independent recordings, so a pose has no
+    GPS fix attached to it — only a time. Pairs further apart than
+    ``max_gap_s`` are dropped rather than guessed at: a pose sampled at 2 fps
+    and a log at 1 Hz can differ by half a second legitimately, but beyond
+    that the association is fiction and would poison the fit.
+
+    Candidates are consumed in order of increasing ``|dt|`` and one-to-one, so
+    when two poses compete for the same fix the closest one wins. The result is
+    returned in pose time order. Rejected poses and poses without a centre are
+    skipped.
+    """
+    if max_gap_s < 0.0:
+        raise ValueError(f"max_time_gap_s must be >= 0, got {max_gap_s}")
+    if not fixes:
+        return []
+    fix_times = np.asarray([f.timestamp_s for f in fixes], dtype=np.float64)
+
+    candidates: list[tuple[float, int, int, object]] = []
+    for pose_index, pose in enumerate(poses):
+        if not getattr(pose, "kept", False) or getattr(pose, "C", None) is None:
+            continue
+        fix_index = int(np.argmin(np.abs(fix_times - pose.timestamp_s)))
+        dt = float(fix_times[fix_index] - pose.timestamp_s)
+        if abs(dt) <= max_gap_s:
+            candidates.append((abs(dt), pose_index, fix_index, dt))
+    # Closest pairing first, so the winner of a contested fix is deterministic.
+    candidates.sort(key=lambda c: (c[0], c[1]))
+
+    used_fixes: set[int] = set()
+    pairs: list[PoseFixPair] = []
+    for _abs_dt, pose_index, fix_index, dt in candidates:
+        if fix_index in used_fixes:
+            continue
+        used_fixes.add(fix_index)
+        pairs.append(PoseFixPair(pose=poses[pose_index], fix=fixes[fix_index],
+                                 dt_s=dt))
+    pairs.sort(key=lambda p: p.pose.timestamp_s)
+    return pairs
