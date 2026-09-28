@@ -91,13 +91,15 @@ class AlignmentPolicy:
 
 
 def resolve_policy(cfg: dict, mode: str | None = None,
-                   inlier_threshold_m: float | None = None) -> AlignmentPolicy:
+                   inlier_threshold_m: float | None = None,
+                   iterations: int | None = None) -> AlignmentPolicy:
     """Read the ``alignment.*`` section of the config into a policy."""
     defaults = AlignmentPolicy()
     requested = (mode or str(get(cfg, "alignment.mode", defaults.mode))).strip().lower()
     return AlignmentPolicy(
         mode=requested,
-        iterations=int(get(cfg, "alignment.ransac_iterations", defaults.iterations)),
+        iterations=int(iterations if iterations is not None
+                       else get(cfg, "alignment.ransac_iterations", defaults.iterations)),
         inlier_threshold_m=float(
             inlier_threshold_m if inlier_threshold_m is not None
             else get(cfg, "alignment.inlier_threshold_m", defaults.inlier_threshold_m)),
@@ -140,18 +142,22 @@ def resolve_paths(cfg: dict, poses_csv: str | Path | None = None,
     the transform and the report land under ``paths.reports`` with the rest of
     the audit artefacts. ``output_name`` (``alignment.output_name``) drives all
     three file names so several alignments can coexist in one project.
+
+    ``output_dir`` moves the aligned trajectory only. ``paths.georef`` stays
+    the home of the STEP 7 ``gps_metric.csv`` input, so redirecting the output
+    can never also relocate the GPS file the run depends on.
     """
     name = str(get(cfg, "alignment.output_name", "aligned_trajectory"))
     traj_dir = _absolute(get(cfg, "paths.trajectory", "outputs/trajectory"))
-    georef_dir = Path(output_dir) if output_dir else _absolute(
-        get(cfg, "paths.georef", "outputs/georef"))
-    if not georef_dir.is_absolute():
-        georef_dir = PROJECT_ROOT / georef_dir
+    input_georef_dir = _absolute(get(cfg, "paths.georef", "outputs/georef"))
+    out_dir = Path(output_dir) if output_dir else input_georef_dir
+    if not out_dir.is_absolute():
+        out_dir = PROJECT_ROOT / out_dir
     reports_dir = _absolute(get(cfg, "paths.reports", "outputs/reports"))
     return AlignmentPaths(
         poses_csv=Path(poses_csv) if poses_csv else traj_dir / "camera_poses.csv",
-        gps_csv=Path(gps_csv) if gps_csv else georef_dir / "gps_metric.csv",
-        aligned_csv=georef_dir / f"{name}.csv",
+        gps_csv=Path(gps_csv) if gps_csv else input_georef_dir / "gps_metric.csv",
+        aligned_csv=out_dir / f"{name}.csv",
         transform_json=reports_dir / f"{name}_transform.json",
         report_json=reports_dir / f"{name}_report.json",
     )
@@ -265,13 +271,14 @@ def run_alignment(cfg: dict,
                   gps_csv: str | Path | None = None,
                   output_dir: str | Path | None = None,
                   mode: str | None = None,
-                  inlier_threshold_m: float | None = None) -> AlignmentResult:
+                  inlier_threshold_m: float | None = None,
+                  iterations: int | None = None) -> AlignmentResult:
     """STEP 8 entry point: align the SfM trajectory to the metric GPS track.
 
     Reads the STEP 5 poses and the STEP 7 metric fixes, fits the similarity
     robustly, and writes the aligned trajectory, the transform and the audit
-    report. Tunables come from ``alignment.*`` in the config; ``mode`` and
-    ``inlier_threshold_m`` override it for a one-off run.
+    report. Tunables come from ``alignment.*`` in the config; ``mode``,
+    ``inlier_threshold_m`` and ``iterations`` override it for a one-off run.
 
     A run that cannot be aligned returns ``success=False`` with a
     ``reject_reason`` (``too_few_correspondences``, ``no_valid_hypothesis``,
@@ -280,7 +287,7 @@ def run_alignment(cfg: dict,
     report always says which case it is.
     """
     paths = resolve_paths(cfg, poses_csv, gps_csv, output_dir)
-    policy = resolve_policy(cfg, mode, inlier_threshold_m)
+    policy = resolve_policy(cfg, mode, inlier_threshold_m, iterations)
     poses = read_poses_csv(paths.poses_csv)
     table = read_metric_table(paths.gps_csv)
     log.info("aligning %d poses against %d %s fixes (%s)", len(poses),

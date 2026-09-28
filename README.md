@@ -84,6 +84,9 @@ python -m src.cli show-trajectory
                              # STEP 6: plot camera_poses.csv -> 3D + top-down PNGs
                              #   in outputs/reports/ (headless, matplotlib Agg)
                              #   sanity-check the path before heavy steps
+python -m src.cli convert-gps
+                             # STEP 7: GPS log -> outputs/georef/gps_metric.csv
+                             #   + outputs/reports/gps_report.json (ENU/UTM)
 python -m src.cli align-trajectory
                              # STEP 8: fit the similarity Xg = s*R*Xv + t that
                              #   maps the SfM trajectory onto gps_metric.csv

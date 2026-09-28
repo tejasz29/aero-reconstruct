@@ -306,7 +306,8 @@ def cmd_align_trajectory(args: argparse.Namespace) -> int:
 
     result = run_alignment(cfg, poses_csv=poses_csv, gps_csv=gps_csv,
                            output_dir=output_dir, mode=args.mode,
-                           inlier_threshold_m=args.inlier_threshold)
+                           inlier_threshold_m=args.inlier_threshold,
+                           iterations=args.ransac_iterations)
     tier = result.rtk.source
     if not result.success:
         print(f"alignment: REJECTED ({result.reject_reason}) with "
@@ -411,6 +412,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="override alignment.mode (3d | 2d).")
     at.add_argument("--inlier-threshold", type=float, default=None,
                     help="override alignment.inlier_threshold_m.")
+    at.add_argument("--ransac-iterations", type=int, default=None,
+                    help="override alignment.ransac_iterations.")
     at.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
