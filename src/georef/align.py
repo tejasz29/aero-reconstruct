@@ -279,9 +279,9 @@ def estimate_similarity(source: np.ndarray, target: np.ndarray,
     is already known from another source.
 
     Requires at least :data:`MIN_SIMILARITY_SAMPLES` correspondences whose
-    source points actually span 3D. A coplanar but non-degenerate path (the
-    normal case for a drone pass) is fine; coincident or collinear sources
-    cannot constrain a 3D similarity and raise ``ValueError``.
+    source points actually span the path. A coplanar but non-degenerate path
+    (the normal case for a drone pass) is fine; coincident or collinear
+    sources cannot constrain a 3D similarity and raise ``ValueError``.
     """
     src, dst = _as_point_arrays(source, target)
     n = src.shape[0]
@@ -291,6 +291,16 @@ def estimate_similarity(source: np.ndarray, target: np.ndarray,
             f"correspondences, got {n}")
     mu_s, centred_s = _centroids(src)
     mu_d, centred_d = _centroids(dst)
+    # A coplanar path (rank 2) is the normal drone case and still constrains
+    # the in-plane rotation, the scale and the offset, so it is allowed. A
+    # collinear or coincident path (rank <= 1) constrains nothing useful: the
+    # fitter would happily return a rotation that is pure noise, so it is
+    # refused instead — during RANSAC such a subset is simply a dead sample.
+    spread = np.linalg.svd(centred_s, compute_uv=False)
+    if spread[0] <= 1e-18 or spread[1] <= 1e-9 * spread[0]:
+        raise ValueError(
+            "degenerate source points: the visual path is coincident or "
+            "collinear and cannot constrain a 3D similarity")
     covariance = (centred_d.T @ centred_s) / n
     U, singular, Vt = np.linalg.svd(covariance)
     # det(U Vt) == -1 means the data are mirrored: a camera-frame change of
@@ -302,8 +312,6 @@ def estimate_similarity(source: np.ndarray, target: np.ndarray,
         return SimilarityTransform(1.0, R, mu_d - R @ mu_s)
 
     variance = float((centred_s ** 2).sum() / n)
-    if variance <= 1e-18:
-        raise ValueError("degenerate source points: zero spatial variance")
     scale = float(np.trace(correction @ np.diag(singular)) / variance)
     if scale <= 0.0:
         raise ValueError(
