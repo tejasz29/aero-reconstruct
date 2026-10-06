@@ -4,7 +4,7 @@ Source of truth for build order. A step is **done** only when: implemented,
 tested green, demoed on real or synthetic data, README status updated, and
 committed + pushed. Never start the next step on a broken tree.
 
-**Progress: STEPS 1–9 done · STEP 10 next · 208/208 tests passing.**
+**Progress: STEPS 1–10 done · STEP 11 next · 230/230 tests passing.**
 
 Conventions every step follows: tunables live in `configs/default.yaml`
 (never hard-coded); every stage logs via `src.common.logging_utils`;
@@ -302,11 +302,34 @@ error, CLI parser + e2e).
 confidence, backends, inference, io, runner, CLI, config, tests, docs) — see
 `git log --oneline` since the steps 1–8 baseline snapshot.
 
-## STEP 10 — Depth → 3D ⬜
+## STEP 10 — Depth → 3D ✅ done
 
-**What:** Unproject (`X=(u-cx)·Z/fx`, …), transform to global frame via poses,
-emit colored points. **Files:** `src/fusion/unproject.py`. **Tests:**
-unprojection round-trip against known K/Z, pose-transform correctness.
+**What:** Unproject each keyframe (`X=(u-cx)·Z/fx`, …) to camera frame, to
+STEP 5 world via poses, to metric via STEP 8 scale; emit colored points.
+Per-frame PLY + merged `scene.ply` (user chose per-frame + merged).
+Metric-via-scale only — absolute CRS deferred to STEP 16.
+**Inputs:** `outputs/depth/depth_index.csv` + images · `calibration/camera.yaml` ·
+`outputs/trajectory/camera_poses.csv` · `aligned_trajectory_transform.json` (scale).
+**Outputs:** `outputs/pointcloud/frame_*.ply` + `outputs/pointcloud/scene.ply` ·
+`outputs/pointcloud/cloud_index.csv` (STEP 11 input) ·
+`outputs/reports/unproject_report.json` (`metric_via_gps_scale=true`,
+`absolute_crs=false`).
+**Algorithm:** vectorized pinhole inverse → `valid_mask` (finite + min/max) →
+optional stride thinning → `Xw=R_wc.T@Xcam+C` → `×s` → attach RGB + confidence.
+Missing transform or REJECTED status warns + falls back to s=1 (relative).
+**Files:** `src/fusion/{types,unproject,io,runner}.py` · `src/cli.py` +=
+`unproject-depth` · config += `fusion.unproject_stride`, `min/max_depth_m`,
+`save_per_frame`.
+**Tests:** 230 passed (+22: pixel grid, unproject/reproject round-trip,
+pose identity/rotation, scale contract, valid gates, colored-cloud shapes/
+color/stride/invalid/determinism/stats, PLY/index/report round-trips,
+policy/paths, runner e2e 2-frame synthetic + missing-transform + missing-input
+errors, CLI parser + e2e).
+**Verify:** `python -m src.cli unproject-depth --stride 2` → check
+`outputs/pointcloud/scene.ply` + `cloud_index.csv` + report.
+
+**Commits (34):** STEP 10 split into 34 granular commits (types, unproject,
+pose/scale, cloud, io, runner, CLI, config, tests, docs) — see `git log`.
 
 ## STEP 11 — Point-cloud fusion ⬜
 

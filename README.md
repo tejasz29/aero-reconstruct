@@ -102,6 +102,11 @@ python -m src.cli predict-depth
                              #   outputs/depth/depth_*.npy + confidence_*.npy
                              #   + depth_index.csv + reports/depth_report.json
                              #   depth is NOT metric until STEP 10
+python -m src.cli unproject-depth
+                             # STEP 10: depth -> per-frame + merged colored
+                             #   clouds (metric-via-GPS-scale, NOT absolute CRS)
+                             #   outputs/pointcloud/scene.ply + frame_*.ply
+                             #   + cloud_index.csv + reports/unproject_report.json
 ```
 
 Pipeline-stage subcommands (`preprocess`, `reconstruct`, …) are
@@ -147,8 +152,11 @@ surface including its non-zero exit on a rejected fit.
 dummy-backend shapes/finite/determinism, predict_single full-res output,
 depth stats, .npy/preview/index/report round-trips, runner e2e on synthetic
 keyframes + tiny-image determinism, CLI surface.
+(STEP 10) pinhole unproject + reproject round-trip, pose/scale correctness,
+colored-cloud color/stride/invalid/determinism, PLY/index/report round-trips,
+runner e2e (2-frame synthetic, merged + per-frame, scale flag) + CLI surface.
 
-Current total: **208 tests passing**.
+Current total: **230 tests passing**.
 
 ## 6. Pipeline status
 
@@ -163,7 +171,7 @@ Current total: **208 tests passing**.
 | 7 | GPS parsing + metric conversion | ✅ done |
 | 8 | Visual ↔ GPS alignment | ✅ done (RANSAC + Umeyama refinement, RTK-aware) |
 | 9 | Learned depth inference | ✅ done (dummy CPU + HF fallback, relative only) |
-| 10 | Depth → 3D | ⬜ next |
+| 10 | Depth → 3D | ✅ done (per-frame + merged, metric-via-scale) |
 | 11–12 | Fusion + filtering | ⬜ |
 | 13 | Dynamic-object segmentation | ⬜ |
 | 14–15 | Mesh + texture | ⬜ |
@@ -171,6 +179,6 @@ Current total: **208 tests passing**.
 | 18–19 | Viewer + backend | ⬜ |
 | 20 | Near-real-time optimisation | ⬜ (after offline works) |
 
-**Next recommended step: STEP 10** — depth → 3D unprojection
-(`src/fusion/unproject.py`): `X=(u-cx)·Z/fx` per keyframe, transformed by
-STEP 5 poses and STEP 8 scale. STEP 9 depth stays **relative** until then.
+**Next recommended step: STEP 11** — point-cloud fusion
+(`src/fusion/`): merge per-frame clouds with confidence weighting, voxel
+downsample, duplicate removal. STEP 10 clouds are metric-via-scale inputs.
