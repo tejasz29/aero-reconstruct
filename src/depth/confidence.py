@@ -15,3 +15,17 @@ def gradient_magnitude(depth: np.ndarray) -> np.ndarray:
     d = np.asarray(depth, dtype=np.float64)
     gy, gx = np.gradient(d)
     return np.sqrt(gx * gx + gy * gy)
+
+
+def confidence_from_depth(depth: np.ndarray) -> np.ndarray:
+    """Map relative depth -> confidence in [0, 1].
+
+    High local variation (edges, spikes) lowers confidence via
+    ``1 / (1 + |grad| / scale)`` where scale is the median gradient
+    (robust to outliers). Flat maps yield ~1 everywhere.
+    """
+    d = np.asarray(depth, dtype=np.float64)
+    grad = gradient_magnitude(d)
+    scale = float(np.median(grad)) + 1e-6
+    conf = 1.0 / (1.0 + grad / scale)
+    return np.clip(conf, 0.0, 1.0).astype(np.float32)
