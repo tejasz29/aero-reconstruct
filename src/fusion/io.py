@@ -65,3 +65,22 @@ def validate_cloud(points: np.ndarray, colors: np.ndarray) -> None:
         raise ValueError("cloud points must be finite")
     if cols.min() < 0 or cols.max() > 255:
         raise ValueError("cloud colors must be in [0, 255]")
+
+
+CLOUD_INDEX_HEADER = ["frame_id", "filename", "n_points", "ply_path",
+                      "mean_confidence"]
+
+
+def write_cloud_index(rows: list[dict], path: str | Path) -> Path:
+    """Write per-frame cloud audit CSV (input to STEP 11 fusion)."""
+    import csv
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=CLOUD_INDEX_HEADER)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({k: row.get(k, "") for k in CLOUD_INDEX_HEADER})
+    log.info("cloud index written: %s (%d rows)", p, len(rows))
+    return p
