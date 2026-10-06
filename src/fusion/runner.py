@@ -46,3 +46,52 @@ def resolve_policy(cfg: dict, stride: int | None = None) -> UnprojectPolicy:
         save_per_frame=bool(get(cfg, "fusion.save_per_frame",
                                 defaults.save_per_frame)),
     )
+
+
+@dataclass(frozen=True)
+class UnprojectPaths:
+    """Input and output locations of one unprojection run."""
+
+    depth_index: object
+    poses_csv: object
+    camera_yaml: object
+    transform_json: object
+    frames_dir: object
+    output_dir: object
+    index_csv: object
+    scene_ply: object
+    report_json: object
+
+
+def resolve_paths(cfg: dict, depth_index=None, poses_csv=None,
+                  camera_yaml=None, transform_json=None, frames_dir=None,
+                  output_dir=None) -> UnprojectPaths:
+    """Resolve STEP 4/5/8/9 inputs + outputs/pointcloud + reports."""
+    from pathlib import Path
+
+    from src.common.config_loader import get
+    from src.common.paths import PROJECT_ROOT
+
+    def _abs(p) -> Path:
+        c = Path(p)
+        return c if c.is_absolute() else PROJECT_ROOT / c
+
+    frames = Path(frames_dir) if frames_dir else _abs(
+        get(cfg, "paths.frames", "data/frames"))
+    traj = _abs(get(cfg, "paths.trajectory", "outputs/trajectory"))
+    georef = _abs(get(cfg, "paths.georef", "outputs/georef"))
+    reports = _abs(get(cfg, "paths.reports", "outputs/reports"))
+    out = Path(output_dir) if output_dir else _abs("outputs/pointcloud")
+    if not out.is_absolute():
+        out = PROJECT_ROOT / out
+    depth_idx = Path(depth_index) if depth_index else _abs("outputs/depth") / "depth_index.csv"
+    name = str(get(cfg, "alignment.output_name", "aligned_trajectory"))
+    return UnprojectPaths(
+        depth_index=depth_idx,
+        poses_csv=Path(poses_csv) if poses_csv else traj / "camera_poses.csv",
+        camera_yaml=Path(camera_yaml) if camera_yaml else _abs(
+            get(cfg, "calibration.file", "calibration/camera.yaml")),
+        transform_json=Path(transform_json) if transform_json else reports / f"{name}_transform.json",
+        frames_dir=frames, output_dir=out,
+        index_csv=out / "cloud_index.csv", scene_ply=out / "scene.ply",
+        report_json=reports / "unproject_report.json")
