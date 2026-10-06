@@ -60,3 +60,42 @@ class DummyDepthBackend(DepthBackend):
         depth = 0.6 * grad + 0.3 * luma + 0.1 * (noise - noise.min())
         depth = depth - depth.min() + 0.1  # strictly positive, finite
         return depth.astype(np.float32)
+
+
+class HFDepthBackend(DepthBackend):
+    """Depth Anything V2 via HuggingFace transformers (lazy, optional)."""
+
+    name = "hf"
+
+    def __init__(self, model_id: str = "depth-anything-v2", device: str = "cpu") -> None:
+        self.model_id = model_id
+        self.device = resolve_device(device)
+        self._pipe = None
+
+    def _ensure_loaded(self):
+        if self._pipe is not None:
+            return self._pipe
+        try:
+            from transformers import pipeline
+        except Exception as exc:
+            raise RuntimeError(
+                "transformers/torch missing for HF depth backend "
+                f"({exc}); use backend=dummy on CPU-only machines"
+            ) from exc
+        log.info("loading HF depth model %s on %s", self.model_id, self.device)
+        self._pipe = pipeline("depth-estimation", model=self.model_id,
+                              device=self.device)
+        return self._pipe
+
+    def predict(self, image) -> object:
+        import numpy as np
+        from PIL import Image
+
+        pipe = self._ensure_loaded()
+        if isinstance(image, np.ndarray):
+            pil = Image.fromarray(image.astype("uint8"))
+        else:
+            pil = image
+        out = pipe(pil)
+        depth = np.asarray(out["predicted_depth"], dtype=np.float32)
+        return depth
