@@ -95,3 +95,38 @@ def valid_mask(depth: np.ndarray, min_depth: float = 1e-6,
         raise ValueError("max_depth must exceed min_depth")
     d = np.asarray(depth)
     return np.isfinite(d) & (d > min_depth) & (d <= max_depth)
+
+
+def colored_cloud(depth: np.ndarray, rgb: np.ndarray, fx: float, fy: float,
+                  cx: float, cy: float, R_wc: np.ndarray, C: np.ndarray,
+                  scale: float = 1.0, confidence: np.ndarray | None = None,
+                  stride: int = 1, min_depth: float = 1e-6,
+                  max_depth: float = 1e9) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Depth+RGB -> (points Nx3 metric-via-scale, colors Nx3 uint8, conf N).
+
+    Drops invalid pixels via :func:`valid_mask`; ``stride`` thins pixels
+    (2 = every other row/col) from config to bound cloud size.
+    """
+    if stride < 1:
+        raise ValueError(f"stride must be >= 1, got {stride}")
+    d = np.asarray(depth)
+    img = np.asarray(rgb)
+    if d.shape != img.shape[:2]:
+        raise ValueError(f"depth {d.shape} != image {img.shape[:2]}")
+    if img.shape[2] != 3:
+        raise ValueError(f"rgb must be HxWx3, got shape {img.shape}")
+    mask = valid_mask(d, min_depth, max_depth)
+    if stride > 1:
+        keep = np.zeros_like(mask, dtype=bool)
+        keep[::stride, ::stride] = True
+        mask = mask & keep
+    cam = unproject_depth(np.where(mask, d, np.nan), fx, fy, cx, cy)
+    pts_cam = cam[mask]
+    world = apply_pose(pts_cam, R_wc, C)
+    metric = apply_scale(world, scale)
+    colors = img[mask].astype(np.uint8)
+    if confidence is None:
+        conf = np.ones(len(metric), dtype=np.float32)
+    else:
+        conf = np.asarray(confidence, dtype=np.float32)[mask]
+    return metric, colors, conf
