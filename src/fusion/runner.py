@@ -200,6 +200,15 @@ def run_unprojection(cfg: dict, depth_index=None, poses_csv=None,
         per_frame.append((points, colors))
     if not per_frame:
         raise ValueError("no frames produced points — check poses/depth overlap")
+    merged_pts = np.concatenate([p for p, _ in per_frame], axis=0)
+    merged_cols = np.concatenate([c for _, c in per_frame], axis=0)
+    scene_ply = str(save_ply(merged_pts, merged_cols, paths.scene_ply))
+    index_csv = str(write_cloud_index(index_rows, paths.index_csv))
+    stats = cloud_stats(merged_pts)
+    log.info("merged %d points from %d frames -> %s", len(merged_pts),
+             len(per_frame), scene_ply)
     return {"paths": paths, "policy": policy, "scale": scale,
             "rows": index_rows, "per_frame": per_frame,
-            "intrinsics": intrinsics, "note": SCALE_NOTE}
+            "intrinsics": intrinsics, "note": SCALE_NOTE,
+            "scene_ply": scene_ply, "index_csv": index_csv, "stats": stats,
+            "n_points": len(merged_pts), "n_frames": len(per_frame)}
