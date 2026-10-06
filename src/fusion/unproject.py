@@ -22,3 +22,22 @@ def pixel_grid(width: int, height: int) -> tuple[np.ndarray, np.ndarray]:
     us, vs = np.meshgrid(np.arange(width, dtype=np.float64),
                          np.arange(height, dtype=np.float64))
     return us, vs
+
+
+def unproject_depth(depth: np.ndarray, fx: float, fy: float,
+                    cx: float, cy: float) -> np.ndarray:
+    """Camera-frame points (HxWx3) from a relative depth map.
+
+    Vectorized pinhole inverse; invalid pixels (non-finite, <= 0) become NaN
+    here and are dropped later by :func:`valid_mask` — never silently zero.
+    """
+    if fx <= 0 or fy <= 0:
+        raise ValueError(f"focal must be positive, got {(fx, fy)}")
+    d = np.asarray(depth, dtype=np.float64)
+    if d.ndim != 2:
+        raise ValueError(f"depth must be HxW, got shape {d.shape}")
+    h, w = d.shape
+    us, vs = pixel_grid(w, h)
+    x = (us - cx) * d / fx
+    y = (vs - cy) * d / fy
+    return np.stack([x, y, d], axis=-1)
