@@ -19,3 +19,26 @@ class FrameCloud:
     n_points: int
     ply_path: str = ""
     mean_confidence: float = 0.0
+
+
+SCALE_NOTE = (
+    "Points are metric via the STEP 8 GPS scale (s) applied to relative "
+    "depth; they are NOT yet in an absolute CRS — STEP 16 assigns ENU/UTM."
+)
+
+
+@dataclass(frozen=True)
+class CloudStats:
+    """Count + bounds summary for one cloud (for the report)."""
+
+    n_points: int
+    xmin: float
+    xmax: float
+    ymin: float
+    ymax: float
+    zmin: float
+    zmax: float
+
+    def is_valid(self) -> bool:
+        """A cloud is usable when it has points and finite spread."""
+        return self.n_points > 0 and self.xmax >= self.xmin
