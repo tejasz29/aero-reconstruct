@@ -31,3 +31,18 @@ class UnprojectPolicy:
         return {"stride": self.stride, "min_depth": self.min_depth,
                 "max_depth": self.max_depth,
                 "save_per_frame": self.save_per_frame}
+
+
+def resolve_policy(cfg: dict, stride: int | None = None) -> UnprojectPolicy:
+    """Read the ``fusion.*`` unproject knobs into a policy."""
+    from src.common.config_loader import get
+
+    defaults = UnprojectPolicy()
+    return UnprojectPolicy(
+        stride=int(stride if stride is not None
+                   else get(cfg, "fusion.unproject_stride", defaults.stride)),
+        min_depth=float(get(cfg, "fusion.min_depth_m", defaults.min_depth)),
+        max_depth=float(get(cfg, "fusion.max_depth_m", defaults.max_depth)),
+        save_per_frame=bool(get(cfg, "fusion.save_per_frame",
+                                defaults.save_per_frame)),
+    )
