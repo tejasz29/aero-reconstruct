@@ -130,3 +130,21 @@ def colored_cloud(depth: np.ndarray, rgb: np.ndarray, fx: float, fy: float,
     else:
         conf = np.asarray(confidence, dtype=np.float32)[mask]
     return metric, colors, conf
+
+
+def cloud_stats(points: np.ndarray) -> dict:
+    """Count + bounds summary for the report (empty cloud -> zeros)."""
+    from src.fusion.types import CloudStats
+
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if len(pts) == 0:
+        summary = CloudStats(0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else:
+        summary = CloudStats(len(pts), float(pts[:, 0].min()),
+                             float(pts[:, 0].max()), float(pts[:, 1].min()),
+                             float(pts[:, 1].max()), float(pts[:, 2].min()),
+                             float(pts[:, 2].max()))
+    return {"n_points": summary.n_points,
+            "bounds": [[summary.xmin, summary.xmax], [summary.ymin, summary.ymax],
+                       [summary.zmin, summary.zmax]],
+            "valid": summary.is_valid()}
