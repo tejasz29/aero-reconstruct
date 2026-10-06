@@ -95,6 +95,13 @@ python -m src.cli align-trajectory
                              #   outputs/georef/aligned_trajectory.csv
                              #   + reports/aligned_trajectory_{transform,report}.json
                              #   exits 1 when the fit is rejected
+python -m src.cli predict-depth
+                             # STEP 9: relative monocular depth + confidence
+                             #   per keyframe (dummy CPU backend by default,
+                             #   HF Depth-Anything when available)
+                             #   outputs/depth/depth_*.npy + confidence_*.npy
+                             #   + depth_index.csv + reports/depth_report.json
+                             #   depth is NOT metric until STEP 10
 ```
 
 Pipeline-stage subcommands (`preprocess`, `reconstruct`, …) are
@@ -136,8 +143,12 @@ refusal (collinear/mirrored), RANSAC outlier rejection with named outliers,
 pose/GPS association and the time gate, RTK tier handling + accuracy wording,
 metric-CSV read-back, runner e2e (3D, planar, RTK, rejected) and the CLI
 surface including its non-zero exit on a rejected fit.
+(STEP 9) preprocess resize/normalize, confidence range [0,1] + validation,
+dummy-backend shapes/finite/determinism, predict_single full-res output,
+depth stats, .npy/preview/index/report round-trips, runner e2e on synthetic
+keyframes + tiny-image determinism, CLI surface.
 
-Current total: **180 tests passing**.
+Current total: **208 tests passing**.
 
 ## 6. Pipeline status
 
@@ -151,7 +162,8 @@ Current total: **180 tests passing**.
 | 6 | Trajectory visualisation | ✅ done |
 | 7 | GPS parsing + metric conversion | ✅ done |
 | 8 | Visual ↔ GPS alignment | ✅ done (RANSAC + Umeyama refinement, RTK-aware) |
-| 9–10 | Learned depth → 3D | ⬜ next |
+| 9 | Learned depth inference | ✅ done (dummy CPU + HF fallback, relative only) |
+| 10 | Depth → 3D | ⬜ next |
 | 11–12 | Fusion + filtering | ⬜ |
 | 13 | Dynamic-object segmentation | ⬜ |
 | 14–15 | Mesh + texture | ⬜ |
@@ -159,7 +171,6 @@ Current total: **180 tests passing**.
 | 18–19 | Viewer + backend | ⬜ |
 | 20 | Near-real-time optimisation | ⬜ (after offline works) |
 
-**Next recommended step: STEP 9** — learned monocular depth
-(`src/depth/`): Depth-Anything-style relative depth + confidence per
-keyframe. Depth is **not** metric; the STEP 8 scale plus the camera poses
-are what constrain it in STEP 10.
+**Next recommended step: STEP 10** — depth → 3D unprojection
+(`src/fusion/unproject.py`): `X=(u-cx)·Z/fx` per keyframe, transformed by
+STEP 5 poses and STEP 8 scale. STEP 9 depth stays **relative** until then.

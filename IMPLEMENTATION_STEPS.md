@@ -4,7 +4,7 @@ Source of truth for build order. A step is **done** only when: implemented,
 tested green, demoed on real or synthetic data, README status updated, and
 committed + pushed. Never start the next step on a broken tree.
 
-**Progress: STEPS 1–8 done · STEP 9 next · 180/180 tests passing.**
+**Progress: STEPS 1–9 done · STEP 10 next · 208/208 tests passing.**
 
 Conventions every step follows: tunables live in `configs/default.yaml`
 (never hard-coded); every stage logs via `src.common.logging_utils`;
@@ -271,13 +271,36 @@ rejected fit prints the reason and exits 1.
 refinement, RANSAC, RTK, accuracy, writers, runner, CLI, tests) — see
 `git log --oneline origin/main..HEAD`.
 
-## STEP 9 — Learned depth inference ⬜ next
+## STEP 9 — Learned depth inference ✅ done
 
-**What:** Monocular depth (+ confidence) per keyframe via Depth Anything
-family. Depth is NOT metric — constrained later by SfM/GPS scale.
-**Outputs:** depth maps + confidence under `outputs/` (or `data/` cache).
-**Files:** `src/depth/` · CLI `predict-depth`. **Tests:** output shapes,
-finite values, confidence range, determinism smoke test on tiny input.
+**What:** Monocular depth (+ confidence) per keyframe. Dummy CPU backend by
+default (deterministic, no weights) with an automatic fallback from the
+Depth Anything HF backend when torch/transformers or weights are missing.
+Depth is NOT metric — constrained later by SfM/GPS scale in STEP 10.
+**Inputs:** `data/frames/keyframes.csv` + images (STEP 3).
+**Outputs:** `outputs/depth/depth_*.npy` + `confidence_*.npy` (+ grayscale
+previews) · `outputs/depth/depth_index.csv` (one row per keyframe) ·
+`outputs/reports/depth_report.json` (backend, policy, relative-depth note).
+**Algorithm:** PIL load → longest-side resize (`depth.input_size`, aspect
+kept, 2x upscale cap) → backend predict at model size → bilinear resize back
+to HxW → `ensure_finite` (median fill) → edge-aware confidence
+`1/(1+|grad|/median)` in [0,1]. `resolve_device` maps `auto|cuda|cpu`;
+`get_backend` tries HF then warns + falls back to dummy.
+**Files:** `src/depth/{types,preprocess,confidence,model,inference,io,
+runner}.py` · `src/cli.py` += `predict-depth` · config += `depth.backend`,
+`depth.input_size`, `depth.store_confidence` (plus existing model/device).
+**Tests:** 208 passed (+28: preprocess resize/normalize/load, confidence
+range/flat/uniform/validation, device/backend/dummy determinism, ensure_finite,
+predict_single shapes + full-res + determinism, depth stats, npy/preview/
+confidence/index/report round-trips, policy/paths, runner e2e (3-keyframe
+synthetic pass) + tiny-image determinism smoke test + missing-keyframes
+error, CLI parser + e2e).
+**Verify:** `python -m src.cli predict-depth --backend dummy` → check
+`outputs/depth/depth_index.csv` + report; depth values are relative.
+
+**Commits (32):** STEP 9 split into 32 granular commits (types, preprocess,
+confidence, backends, inference, io, runner, CLI, config, tests, docs) — see
+`git log --oneline` since the steps 1–8 baseline snapshot.
 
 ## STEP 10 — Depth → 3D ⬜
 
