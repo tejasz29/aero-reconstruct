@@ -33,7 +33,7 @@ def test_build_parser_lists_all_stage_subcommands():
     help_text = cli.build_parser().format_help()
     for subcommand in ("extract-frames", "select-keyframes", "calibrate",
                        "reconstruct-poses", "show-trajectory", "convert-gps",
-                       "align-trajectory"):
+                       "align-trajectory", "predict-depth", "unproject-depth"):
         assert subcommand in help_text
 
 
