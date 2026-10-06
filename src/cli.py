@@ -415,6 +415,21 @@ def build_parser() -> argparse.ArgumentParser:
     at.add_argument("--ransac-iterations", type=int, default=None,
                     help="override alignment.ransac_iterations.")
     at.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
+
+    pd = sub.add_parser("predict-depth",
+                        help="STEP 9: monocular depth + confidence per keyframe "
+                             "-> outputs/depth/*.npy + depth_index.csv.")
+    pd.add_argument("--frames-dir", default=None,
+                    help="frames dir with keyframes.csv (default: paths.frames).")
+    pd.add_argument("--keyframes-file", default=None,
+                    help="keyframes.csv to read (default: <frames-dir>/keyframes.csv).")
+    pd.add_argument("--output-dir", default=None,
+                    help="output dir for depth maps (default: outputs/depth).")
+    pd.add_argument("--backend", default=None, choices=["dummy", "hf", "auto"],
+                    help="override depth.backend.")
+    pd.add_argument("--device", default=None, choices=["auto", "cuda", "cpu"],
+                    help="override depth.device.")
+    pd.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
