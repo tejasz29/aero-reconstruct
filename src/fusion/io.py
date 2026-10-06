@@ -84,3 +84,11 @@ def write_cloud_index(rows: list[dict], path: str | Path) -> Path:
             writer.writerow({k: row.get(k, "") for k in CLOUD_INDEX_HEADER})
     log.info("cloud index written: %s (%d rows)", p, len(rows))
     return p
+
+
+def read_cloud_index(path: str | Path) -> list[dict]:
+    """Read the per-frame cloud index back."""
+    import csv
+
+    with open(path, newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
