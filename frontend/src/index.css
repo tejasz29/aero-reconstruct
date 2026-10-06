@@ -1,0 +1,19 @@
+/* single-pass-3d viewer — minimal dark layout for trajectory + cloud. */
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #0b0e14; color: #e6e9f0; }
+a { color: #7cc4ff; }
+header { padding: 12px 16px; border-bottom: 1px solid #222a3a; display: flex; gap: 12px; align-items: baseline; }
+header h1 { font-size: 16px; margin: 0; }
+header .sub { color: #9aa4b8; font-size: 12px; }
+main { display: grid; grid-template-columns: 340px 1fr; gap: 12px; padding: 12px; height: calc(100vh - 52px); }
+aside { overflow: auto; border: 1px solid #222a3a; border-radius: 8px; padding: 12px; }
+section.view { border: 1px solid #222a3a; border-radius: 8px; overflow: hidden; position: relative; min-height: 320px; }
+.banner { background: #2a1f00; border: 1px solid #8a6d1b; color: #ffd97a; padding: 8px 10px; border-radius: 8px; font-size: 12px; margin-bottom: 10px; }
+.row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+button, input, select { font: inherit; }
+button { background: #1d4ed8; border: 0; color: white; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+pre.logs { background: #05070c; padding: 8px; border-radius: 6px; max-height: 220px; overflow: auto; font-size: 11px; }
+.stage-done { color: #4ade80; } .stage-failed { color: #f87171; } .stage-running { color: #7cc4ff; }
+canvas { display: block; }
