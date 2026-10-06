@@ -92,3 +92,15 @@ def read_cloud_index(path: str | Path) -> list[dict]:
 
     with open(path, newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
+
+
+def write_unproject_report(report: dict, path: str | Path) -> Path:
+    """Write ``unproject_report.json`` (scale note + stats + paths)."""
+    import json
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as fh:
+        json.dump(report, fh, indent=2, sort_keys=True)
+    log.info("unproject report written: %s", p)
+    return p
