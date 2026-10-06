@@ -453,6 +453,25 @@ def build_parser() -> argparse.ArgumentParser:
     pd.add_argument("--device", default=None, choices=["auto", "cuda", "cpu"],
                     help="override depth.device.")
     pd.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
+
+    uj = sub.add_parser("unproject-depth",
+                        help="STEP 10: depth -> colored 3D clouds "
+                             "-> outputs/pointcloud/scene.ply.")
+    uj.add_argument("--depth-index", default=None,
+                    help="depth_index.csv (default: outputs/depth/depth_index.csv).")
+    uj.add_argument("--poses-csv", default=None,
+                    help="camera poses CSV (default: outputs/trajectory/camera_poses.csv).")
+    uj.add_argument("--camera", default=None,
+                    help="camera model YAML (default: calibration.file).")
+    uj.add_argument("--transform-json", default=None,
+                    help="STEP 8 transform JSON (default: aligned_trajectory_transform.json).")
+    uj.add_argument("--frames-dir", default=None,
+                    help="frames dir (default: paths.frames).")
+    uj.add_argument("--output-dir", default=None,
+                    help="cloud output dir (default: outputs/pointcloud).")
+    uj.add_argument("--stride", type=int, default=None,
+                    help="override fusion.unproject_stride.")
+    uj.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
