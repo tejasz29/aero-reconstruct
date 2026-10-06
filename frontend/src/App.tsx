@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, type Job } from "./api";
 import AccuracyBanner from "./components/AccuracyBanner";
+import PipelineProgress from "./components/PipelineProgress";
 import ReportsPanel from "./components/ReportsPanel";
+import UploadForm from "./components/UploadForm";
 import Viewer3D from "./components/Viewer3D";
 import "./index.css";
 
@@ -49,6 +51,13 @@ export default function App() {
       <main>
         <aside>
           <AccuracyBanner />
+          <UploadForm
+            onCreated={(id) => {
+              setActive(id);
+              refresh();
+            }}
+          />
+          <PipelineProgress jobId={active} />
           <h3>Jobs ({jobs.length})</h3>
           <ul>
             {jobs.map((j) => (
@@ -63,21 +72,9 @@ export default function App() {
                   {j.id}
                 </button>{" "}
                 <span style={{ fontSize: 12 }}>{j.status}</span>
-                <div style={{ fontSize: 11, color: "#9aa4b8" }}>
-                  {j.stages
-                    .filter((s) => s.status !== "pending")
-                    .map((s) => `${s.name}:${s.status}`)
-                    .join(" · ")}
-                </div>
               </li>
             ))}
           </ul>
-          {jobs.length === 0 && (
-            <p style={{ fontSize: 12, color: "#9aa4b8" }}>
-              No jobs yet — upload arrives in the next commit; meanwhile the viewer
-              falls back to global outputs/ when job id is empty.
-            </p>
-          )}
           <ReportsPanel jobId={active} />
         </aside>
         <section className="view">
@@ -85,7 +82,8 @@ export default function App() {
             <Viewer3D jobId={active} />
           ) : (
             <p style={{ padding: 16, color: "#9aa4b8" }}>
-              Select a job to view its point cloud + trajectory.
+              Upload a video to queue Steps 2–10, then watch the point cloud +
+              trajectory here.
             </p>
           )}
         </section>
