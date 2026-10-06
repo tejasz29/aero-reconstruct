@@ -27,3 +27,21 @@ def resolve_device(requested: str = "auto") -> str:
     if name == "cpu":
         return "cpu"
     raise ValueError(f"unknown device: {requested!r} (auto|cuda|cpu)")
+
+
+class DepthBackend:
+    """Minimal depth interface: HxWx3 uint8 -> HxW float32 relative depth."""
+
+    name: str = "base"
+
+    def predict(self, image) -> object:  # pragma: no cover - interface only
+        raise NotImplementedError
+
+
+class DummyDepthBackend(DepthBackend):
+    """Deterministic CPU fallback (no weights): vertical gradient + texture."""
+
+    name = "dummy"
+
+    def __init__(self, seed: int = 42) -> None:
+        self.seed = int(seed)
