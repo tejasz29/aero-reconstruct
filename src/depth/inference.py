@@ -49,3 +49,21 @@ def predict_single(image: np.ndarray, backend, input_size: int = 518) -> tuple[n
         raw = np.asarray(pil.resize((w, h), Image.BILINEAR), dtype=np.float32)
     conf = confidence_from_depth(raw)
     return raw, conf
+
+
+def depth_stats(depth: np.ndarray) -> dict:
+    """Finite-value summary (min/max/mean + finite fraction) for the index."""
+    from src.depth.types import DepthStats
+
+    d = np.asarray(depth, dtype=np.float64)
+    finite = np.isfinite(d)
+    frac = float(finite.mean()) if d.size else 0.0
+    if bool(finite.any()):
+        vals = d[finite]
+        summary = DepthStats(float(vals.min()), float(vals.max()),
+                             float(vals.mean()), frac)
+    else:
+        summary = DepthStats(0.0, 0.0, 0.0, 0.0)
+    return {"min": summary.dmin, "max": summary.dmax, "mean": summary.dmean,
+            "finite_fraction": summary.finite_fraction,
+            "valid": summary.is_valid()}
