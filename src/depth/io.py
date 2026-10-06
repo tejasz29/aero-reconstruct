@@ -75,3 +75,15 @@ def read_depth_index(path: str | Path) -> list[dict]:
     """Read ``depth_index.csv`` back (used by STEP 10 and tests)."""
     with open(path, newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
+
+
+def write_depth_report(report: dict, path: str | Path) -> Path:
+    """Write ``depth_report.json`` (config, counts, stats, relative note)."""
+    import json
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as fh:
+        json.dump(report, fh, indent=2, sort_keys=True)
+    log.info("depth report written: %s", p)
+    return p
