@@ -207,8 +207,21 @@ def run_unprojection(cfg: dict, depth_index=None, poses_csv=None,
     stats = cloud_stats(merged_pts)
     log.info("merged %d points from %d frames -> %s", len(merged_pts),
              len(per_frame), scene_ply)
+    report = {"n_frames": len(per_frame), "n_points": len(merged_pts),
+              "scale": scale, "metric_via_gps_scale": True,
+              "absolute_crs": False, "policy": policy.as_dict(),
+              "stats": stats, "scene_ply": scene_ply,
+              "index_csv": index_csv,
+              "inputs": {"depth_index": str(paths.depth_index),
+                         "poses_csv": str(paths.poses_csv),
+                         "camera_yaml": str(paths.camera_yaml),
+                         "transform_json": str(paths.transform_json)},
+              "note": SCALE_NOTE}
+    report_json = str(write_unproject_report(report, paths.report_json))
+    log.warning("cloud is metric-via-scale, NOT absolute CRS — %s", SCALE_NOTE)
     return {"paths": paths, "policy": policy, "scale": scale,
             "rows": index_rows, "per_frame": per_frame,
             "intrinsics": intrinsics, "note": SCALE_NOTE,
             "scene_ply": scene_ply, "index_csv": index_csv, "stats": stats,
+            "report_json": report_json,
             "n_points": len(merged_pts), "n_frames": len(per_frame)}
