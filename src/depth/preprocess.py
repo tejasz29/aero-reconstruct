@@ -46,3 +46,11 @@ def resize_to_model(image: np.ndarray, input_size: int = 518) -> np.ndarray:
     new_w, new_h = max(1, round(w * scale)), max(1, round(h * scale))
     pil = Image.fromarray(image)
     return np.asarray(pil.resize((new_w, new_h), Image.BILINEAR))
+
+
+def normalize_chw(image: np.ndarray) -> np.ndarray:
+    """uint8 HxWx3 -> float32 3xHxW in [0, 1] (ImageNet-mean optional later)."""
+    arr = np.asarray(image, dtype=np.float32) / 255.0
+    if arr.ndim != 3 or arr.shape[2] != 3:
+        raise ValueError(f"expected HxWx3 RGB, got shape {arr.shape}")
+    return np.transpose(arr, (2, 0, 1))
