@@ -84,3 +84,14 @@ def apply_scale(points: np.ndarray, scale: float) -> np.ndarray:
         raise ValueError(f"scale must be positive and finite, got {scale}")
     pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     return pts * float(scale)
+
+
+def valid_mask(depth: np.ndarray, min_depth: float = 1e-6,
+               max_depth: float = 1e9) -> np.ndarray:
+    """Keep mask for finite depth in (min, max]; never silently zero."""
+    if not min_depth >= 0.0:
+        raise ValueError(f"min_depth must be >= 0, got {min_depth}")
+    if not max_depth > min_depth:
+        raise ValueError("max_depth must exceed min_depth")
+    d = np.asarray(depth)
+    return np.isfinite(d) & (d > min_depth) & (d <= max_depth)
