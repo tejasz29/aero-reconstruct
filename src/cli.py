@@ -352,6 +352,31 @@ def cmd_predict_depth(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_unproject_depth(args: argparse.Namespace) -> int:
+    """STEP 10 — depth maps to per-frame + merged colored clouds."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    depth_index = Path(args.depth_index) if args.depth_index else None
+    poses_csv = Path(args.poses_csv) if args.poses_csv else None
+    camera = Path(args.camera) if args.camera else None
+    transform_json = Path(args.transform_json) if args.transform_json else None
+    frames_dir = Path(args.frames_dir) if args.frames_dir else None
+    output_dir = Path(args.output_dir) if args.output_dir else None
+
+    from src.fusion.runner import run_unprojection
+    result = run_unprojection(cfg, depth_index=depth_index,
+                              poses_csv=poses_csv, camera_yaml=camera,
+                              transform_json=transform_json,
+                              frames_dir=frames_dir, output_dir=output_dir,
+                              stride=args.stride)
+    print(f"frames  : {result['n_frames']} clouds -> {result['index_csv']}")
+    print(f"points  : {result['n_points']} merged -> {result['scene_ply']}")
+    print(f"scale   : {result['scale']:.4f} m per unit (metric-via-scale, NOT absolute CRS)")
+    print(f"report  : {result['report_json']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sp3d",
