@@ -41,3 +41,17 @@ def unproject_depth(depth: np.ndarray, fx: float, fy: float,
     x = (us - cx) * d / fx
     y = (vs - cy) * d / fy
     return np.stack([x, y, d], axis=-1)
+
+
+def reproject_points(points_cam: np.ndarray, fx: float, fy: float,
+                     cx: float, cy: float) -> np.ndarray:
+    """Camera-frame Nx3 -> pixels Nx2 (round-trip check for tests)."""
+    pts = np.asarray(points_cam, dtype=np.float64).reshape(-1, 3)
+    if pts.shape[0] == 0:
+        return np.zeros((0, 2))
+    z = pts[:, 2]
+    if bool((z <= 0).any()):
+        raise ValueError("cannot reproject points with depth <= 0")
+    u = pts[:, 0] * fx / z + cx
+    v = pts[:, 1] * fy / z + cy
+    return np.stack([u, v], axis=-1)
