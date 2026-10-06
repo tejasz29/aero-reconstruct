@@ -53,3 +53,38 @@ def resolve_policy(cfg: dict, backend: str | None = None,
                                   defaults.store_confidence)),
         seed=int(get(cfg, "project.seed", defaults.seed)),
     )
+
+
+@dataclass(frozen=True)
+class DepthPaths:
+    """Input and output locations of one depth run."""
+
+    frames_dir: object
+    keyframes_csv: object
+    output_dir: object
+    index_csv: object
+    report_json: object
+
+
+def resolve_paths(cfg: dict, frames_dir=None, keyframes_file=None,
+                  output_dir=None) -> DepthPaths:
+    """Resolve keyframes input + outputs/depth + reports locations."""
+    from pathlib import Path
+
+    from src.common.config_loader import get
+    from src.common.paths import PROJECT_ROOT
+
+    def _abs(p) -> Path:
+        c = Path(p)
+        return c if c.is_absolute() else PROJECT_ROOT / c
+
+    frames = Path(frames_dir) if frames_dir else _abs(
+        get(cfg, "paths.frames", "data/frames"))
+    keyframes = Path(keyframes_file) if keyframes_file else frames / "keyframes.csv"
+    out = Path(output_dir) if output_dir else _abs("outputs/depth")
+    if not out.is_absolute():
+        out = PROJECT_ROOT / out
+    reports = _abs(get(cfg, "paths.reports", "outputs/reports"))
+    return DepthPaths(frames_dir=frames, keyframes_csv=keyframes,
+                      output_dir=out, index_csv=out / "depth_index.csv",
+                      report_json=reports / "depth_report.json")
