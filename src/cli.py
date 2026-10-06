@@ -32,6 +32,8 @@ or, after ``pip install -e .``::
   -> outputs/georef/aligned_trajectory.csv + transform/report.
 * ``predict-depth`` — STEP 9: relative monocular depth + confidence per
   keyframe -> outputs/depth/*.npy + depth_index.csv + report.
+* ``unproject-depth`` — STEP 10: depth -> per-frame + merged colored clouds
+  -> outputs/pointcloud/scene.ply + cloud_index.csv + report.
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """
@@ -511,7 +513,8 @@ def main(argv: list[str] | None = None) -> int:
                 "show-trajectory": cmd_show_trajectory,
                 "convert-gps": cmd_convert_gps,
                 "align-trajectory": cmd_align_trajectory,
-                "predict-depth": cmd_predict_depth}
+                "predict-depth": cmd_predict_depth,
+                "unproject-depth": cmd_unproject_depth}
     return handlers[args.command](args)
 
 
