@@ -51,3 +51,17 @@ def load_ply(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     if arr.shape[1] != 6:
         raise ValueError(f"PLY must have xyzrgb columns: {p}")
     return arr[:, :3], arr[:, 3:6].astype(np.uint8)
+
+
+def validate_cloud(points: np.ndarray, colors: np.ndarray) -> None:
+    """Raise when a cloud breaks the finite/shape/color contract."""
+    pts = np.asarray(points)
+    cols = np.asarray(colors)
+    if pts.ndim != 2 or pts.shape[1] != 3:
+        raise ValueError(f"points must be Nx3, got shape {pts.shape}")
+    if cols.shape != pts.shape:
+        raise ValueError(f"colors {cols.shape} != points {pts.shape}")
+    if not bool(np.all(np.isfinite(pts))):
+        raise ValueError("cloud points must be finite")
+    if cols.min() < 0 or cols.max() > 255:
+        raise ValueError("cloud colors must be in [0, 255]")
