@@ -56,3 +56,22 @@ def save_confidence_npy(conf: np.ndarray, path: str | Path) -> Path:
     p.parent.mkdir(parents=True, exist_ok=True)
     np.save(p, c)
     return p
+
+
+def write_depth_index(rows: list[dict], path: str | Path) -> Path:
+    """Write ``depth_index.csv`` (one row per keyframe, auditable)."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=DEPTH_INDEX_HEADER)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({k: row.get(k, "") for k in DEPTH_INDEX_HEADER})
+    log.info("depth index written: %s (%d rows)", p, len(rows))
+    return p
+
+
+def read_depth_index(path: str | Path) -> list[dict]:
+    """Read ``depth_index.csv`` back (used by STEP 10 and tests)."""
+    with open(path, newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
