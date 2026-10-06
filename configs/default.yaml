@@ -120,8 +120,12 @@ segmentation:
   mask_classes: ["person", "car", "truck", "bus", "motorcycle", "bicycle"]
   confidence: 0.35
 
-# --- STEP 10/12: fusion + filtering ---
+# --- STEP 10/12: fusion + filtering (STEP 10 = unproject only) ---
 fusion:
+  unproject_stride: 2      # pixel thinning for clouds (1 = dense, 2 = every other)
+  min_depth_m: 0.000001     # depths at/below this are dropped (relative units)
+  max_depth_m: 1000000000.0 # depths above this are dropped
+  save_per_frame: true     # write frame_*.ply plus merged scene.ply
   voxel_size_m: 0.10
   statistical_nb_neighbors: 20
   statistical_std_ratio: 2.0
