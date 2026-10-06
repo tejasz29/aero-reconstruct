@@ -55,3 +55,20 @@ def reproject_points(points_cam: np.ndarray, fx: float, fy: float,
     u = pts[:, 0] * fx / z + cx
     v = pts[:, 1] * fy / z + cy
     return np.stack([u, v], axis=-1)
+
+
+def apply_pose(points_cam: np.ndarray, R_wc: np.ndarray,
+               C: np.ndarray) -> np.ndarray:
+    """Camera -> STEP 5 world: ``Xw = R_wc.T @ Xcam + C`` (Nx3).
+
+    Row-vector form: ``Xw_row = Xcam_row @ R_wc + C`` (since
+    ``(R.T @ x).T = x.T @ R``).
+    """
+    pts = np.asarray(points_cam, dtype=np.float64).reshape(-1, 3)
+    R = np.asarray(R_wc, dtype=np.float64)
+    c = np.asarray(C, dtype=np.float64).reshape(3)
+    if R.shape != (3, 3):
+        raise ValueError(f"R_wc must be 3x3, got {R.shape}")
+    if pts.shape[0] == 0:
+        return pts
+    return pts @ R + c
