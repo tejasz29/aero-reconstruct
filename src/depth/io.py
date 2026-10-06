@@ -26,7 +26,10 @@ def save_depth_npy(depth: np.ndarray, path: str | Path) -> Path:
 
 def load_depth_npy(path: str | Path) -> np.ndarray:
     """Load a depth map; raises ValueError when missing or not 2-D."""
-    arr = np.load(str(path))
+    try:
+        arr = np.load(str(path))
+    except FileNotFoundError as exc:
+        raise ValueError(f"depth map not found: {path}") from exc
     if arr.ndim != 2:
         raise ValueError(f"depth map must be HxW, got shape {arr.shape}: {path}")
     return arr.astype(np.float32)

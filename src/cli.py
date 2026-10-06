@@ -30,6 +30,8 @@ or, after ``pip install -e .``::
 * ``align-trajectory`` — STEP 8: fit the similarity that maps the SfM
   trajectory onto the metric GPS track, resolving the monocular scale
   -> outputs/georef/aligned_trajectory.csv + transform/report.
+* ``predict-depth`` — STEP 9: relative monocular depth + confidence per
+  keyframe -> outputs/depth/*.npy + depth_index.csv + report.
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """
