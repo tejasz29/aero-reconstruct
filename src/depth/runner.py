@@ -151,7 +151,7 @@ def run_depth_prediction(cfg: dict, frames_dir=None, keyframes_file=None,
             conf_path = str(save_confidence_npy(conf, out_dir / f"confidence_{stem}.npy"))
         save_preview_png(depth, out_dir / f"depth_{stem}.png")
         index_rows.append({
-            "frame_id": fid, "filename": filename, "width": h and w and w,
+            "frame_id": fid, "filename": filename, "width": w,
             "height": h, "depth_path": str(depth_path),
             "confidence_path": conf_path,
             "depth_min": round(stats["min"], 6),
