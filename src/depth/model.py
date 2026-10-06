@@ -99,3 +99,20 @@ class HFDepthBackend(DepthBackend):
         out = pipe(pil)
         depth = np.asarray(out["predicted_depth"], dtype=np.float32)
         return depth
+
+
+def get_backend(name: str = "dummy", model_id: str = "depth-anything-v2",
+                device: str = "auto", seed: int = 42) -> DepthBackend:
+    """Factory: ``dummy`` always works; ``hf``/``auto`` try HF then fall back."""
+    key = (name or "dummy").strip().lower()
+    if key == "dummy":
+        return DummyDepthBackend(seed=seed)
+    if key in ("hf", "depth-anything-v2", "auto"):
+        try:
+            backend = HFDepthBackend(model_id=model_id, device=device)
+            backend._ensure_loaded()
+            return backend
+        except Exception as exc:
+            log.warning("HF depth unavailable (%s) — using dummy backend", exc)
+            return DummyDepthBackend(seed=seed)
+    raise ValueError(f"unknown depth backend: {name!r} (dummy|hf|auto)")
