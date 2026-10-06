@@ -108,7 +108,13 @@ def _load_scale(transform_json) -> float:
     if not p.is_file():
         log.warning("transform %s missing — using scale=1 (RELATIVE cloud)", p)
         return 1.0
-    payload = json.loads(p.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"bad transform JSON: {p} ({exc})") from exc
+    if payload.get("status") == "rejected":
+        log.warning("transform was REJECTED — using scale=1 (RELATIVE cloud)")
+        return 1.0
     try:
         transform = transform_from_dict(payload)
     except ValueError:
