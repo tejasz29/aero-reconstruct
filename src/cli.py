@@ -329,6 +329,27 @@ def cmd_align_trajectory(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_predict_depth(args: argparse.Namespace) -> int:
+    """STEP 9 — predict relative depth + confidence per keyframe."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    frames_dir = Path(args.frames_dir) if args.frames_dir else None
+    keyframes_file = Path(args.keyframes_file) if args.keyframes_file else None
+    output_dir = Path(args.output_dir) if args.output_dir else None
+
+    from src.depth.runner import run_depth_prediction
+    result = run_depth_prediction(cfg, frames_dir=frames_dir,
+                                  keyframes_file=keyframes_file,
+                                  output_dir=output_dir,
+                                  backend=args.backend, device=args.device)
+    print(f"backend : {result['backend']} on {result['device']} (RELATIVE depth, not metric)")
+    print(f"frames  : {result['n_keyframes']} keyframes -> {result['index_csv']}")
+    print(f"report  : {result['report_json']}")
+    print("note    : constrain with SfM poses + GPS scale in STEP 10")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sp3d",
