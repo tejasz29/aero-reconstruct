@@ -31,3 +31,23 @@ def save_ply(points: np.ndarray, colors: np.ndarray,
         for (x, y, z), (r, g, b) in zip(pts, cols):
             fh.write(f"{x:.6f} {y:.6f} {z:.6f} {int(r)} {int(g)} {int(b)}\n")
     return p
+
+
+def load_ply(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
+    """Load ascii PLY back to (points Nx3 float, colors Nx3 uint8)."""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"cloud not found: {p}")
+    with open(p, "r", encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    try:
+        end = lines.index("end_header")
+    except ValueError as exc:
+        raise ValueError(f"bad PLY header: {p}") from exc
+    data = [ln.split() for ln in lines[end + 1:] if ln.strip()]
+    if not data:
+        raise ValueError(f"empty PLY cloud: {p}")
+    arr = np.asarray(data, dtype=np.float64)
+    if arr.shape[1] != 6:
+        raise ValueError(f"PLY must have xyzrgb columns: {p}")
+    return arr[:, :3], arr[:, 3:6].astype(np.uint8)
