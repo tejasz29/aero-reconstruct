@@ -130,3 +130,76 @@ def _poses_by_filename(poses_csv) -> dict:
     if not table:
         raise ValueError(f"no accepted poses in {poses_csv}")
     return table
+
+
+def run_unprojection(cfg: dict, depth_index=None, poses_csv=None,
+                     camera_yaml=None, transform_json=None, frames_dir=None,
+                     output_dir=None, stride: int | None = None) -> dict:
+    """STEP 10 entry point: per-frame + merged colored clouds."""
+    from pathlib import Path
+
+    import numpy as np
+
+    from src.calibration.intrinsics import load_intrinsics
+    from src.depth.io import load_depth_npy, read_depth_index
+    from src.depth.preprocess import load_image
+    from src.fusion.io import (save_ply, validate_cloud, write_cloud_index,
+                              write_unproject_report)
+    from src.fusion.types import SCALE_NOTE
+    from src.fusion.unproject import cloud_stats, colored_cloud
+
+    paths = resolve_paths(cfg, depth_index, poses_csv, camera_yaml,
+                          transform_json, frames_dir, output_dir)
+    policy = resolve_policy(cfg, stride=stride)
+    entries = read_depth_index(paths.depth_index)
+    if not entries:
+        raise ValueError(f"no depth rows in {paths.depth_index}")
+    intrinsics = load_intrinsics(paths.camera_yaml)
+    poses = _poses_by_filename(paths.poses_csv)
+    scale = _load_scale(paths.transform_json)
+    log.info("unprojecting %d depth maps (stride=%d, scale=%.4f)",
+             len(entries), policy.stride, scale)
+
+    out_dir = Path(paths.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    index_rows: list[dict] = []
+    per_frame: list[tuple[np.ndarray, np.ndarray]] = []
+    for row in entries:
+        filename = str(row["filename"])
+        pose = poses.get(filename)
+        if pose is None:
+            log.warning("no accepted pose for %s — skipped", filename)
+            continue
+        depth = load_depth_npy(row["depth_path"])
+        rgb = load_image(Path(paths.frames_dir) / filename)
+        if depth.shape != rgb.shape[:2]:
+            raise ValueError(f"depth {depth.shape} != image {rgb.shape[:2]} "
+                             f"for {filename}")
+        conf = None
+        if row.get("confidence_path"):
+            try:
+                conf = np.load(str(row["confidence_path"]))
+            except FileNotFoundError:
+                conf = None
+        points, colors, conf_v = colored_cloud(
+            depth, rgb, intrinsics.fx, intrinsics.fy, intrinsics.cx,
+            intrinsics.cy, pose.R_wc, pose.C, scale=scale,
+            confidence=conf, stride=policy.stride,
+            min_depth=policy.min_depth, max_depth=policy.max_depth)
+        if len(points) == 0:
+            log.warning("empty cloud for %s — skipped", filename)
+            continue
+        validate_cloud(points, colors)
+        stem = Path(filename).stem
+        ply_path = ""
+        if policy.save_per_frame:
+            ply_path = str(save_ply(points, colors, out_dir / f"{stem}.ply"))
+        index_rows.append({"frame_id": row["frame_id"], "filename": filename,
+                           "n_points": len(points), "ply_path": ply_path,
+                           "mean_confidence": round(float(np.mean(conf_v)), 6)})
+        per_frame.append((points, colors))
+    if not per_frame:
+        raise ValueError("no frames produced points — check poses/depth overlap")
+    return {"paths": paths, "policy": policy, "scale": scale,
+            "rows": index_rows, "per_frame": per_frame,
+            "intrinsics": intrinsics, "note": SCALE_NOTE}
