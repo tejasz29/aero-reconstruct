@@ -30,3 +30,17 @@ def load_depth_npy(path: str | Path) -> np.ndarray:
     if arr.ndim != 2:
         raise ValueError(f"depth map must be HxW, got shape {arr.shape}: {path}")
     return arr.astype(np.float32)
+
+
+def save_preview_png(depth: np.ndarray, path: str | Path) -> Path:
+    """Human-viewable grayscale preview (relative depth normalised to 0-255)."""
+    from PIL import Image
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    d = np.asarray(depth, dtype=np.float64)
+    lo, hi = float(np.min(d)), float(np.max(d))
+    span = hi - lo if hi > lo else 1.0
+    norm = ((d - lo) / span * 255.0).clip(0, 255).astype(np.uint8)
+    Image.fromarray(norm, mode="L").save(p)
+    return p
