@@ -95,3 +95,38 @@ def resolve_paths(cfg: dict, depth_index=None, poses_csv=None,
         frames_dir=frames, output_dir=out,
         index_csv=out / "cloud_index.csv", scene_ply=out / "scene.ply",
         report_json=reports / "unproject_report.json")
+
+
+def _load_scale(transform_json) -> float:
+    """Read STEP 8 scale ``s``; missing file means relative (s=1) + warning."""
+    import json
+    from pathlib import Path
+
+    from src.georef.align import transform_from_dict
+
+    p = Path(transform_json)
+    if not p.is_file():
+        log.warning("transform %s missing — using scale=1 (RELATIVE cloud)", p)
+        return 1.0
+    payload = json.loads(p.read_text(encoding="utf-8"))
+    try:
+        transform = transform_from_dict(payload)
+    except ValueError:
+        if "scale" in payload:
+            return float(payload["scale"])
+        raise
+    return float(transform.scale)
+
+
+def _poses_by_filename(poses_csv) -> dict:
+    """Accepted STEP 5 poses keyed by filename (rejected frames skipped)."""
+    from src.sfm.visualize import read_poses_csv
+
+    poses = read_poses_csv(poses_csv)
+    table = {}
+    for p in poses:
+        if p.kept and p.R_wc is not None and p.C is not None:
+            table[p.filename] = p
+    if not table:
+        raise ValueError(f"no accepted poses in {poses_csv}")
+    return table
