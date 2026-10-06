@@ -44,3 +44,15 @@ def save_preview_png(depth: np.ndarray, path: str | Path) -> Path:
     norm = ((d - lo) / span * 255.0).clip(0, 255).astype(np.uint8)
     Image.fromarray(norm, mode="L").save(p)
     return p
+
+
+def save_confidence_npy(conf: np.ndarray, path: str | Path) -> Path:
+    """Save a float32 HxW confidence map in [0, 1] (validates first)."""
+    from src.depth.confidence import validate_confidence
+
+    c = np.asarray(conf, dtype=np.float32)
+    validate_confidence(c, c.shape)
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    np.save(p, c)
+    return p
