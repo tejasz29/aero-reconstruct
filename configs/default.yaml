@@ -104,12 +104,13 @@ alignment:
   use_rtk_if_available: true   # keep RTK-fixed fixes only (and tighten the gate)
   output_name: "aligned_trajectory"
 
-# --- STEP 9: learned monocular depth ---
+# --- STEP 9: learned monocular depth (RELATIVE, not metric) ---
 depth:
+  backend: "dummy"          # dummy (CPU, no weights) | hf | auto (try HF, fall back)
   model: "depth-anything-v2" # HF model id / local ckpt under models/depth
   device: "auto"             # auto | cuda | cpu
-  input_size: 518
-  store_confidence: true
+  input_size: 518            # longest side fed to the model (aspect kept)
+  store_confidence: true     # write confidence_*.npy alongside depth_*.npy
   metric_constraint: "gps_scale"  # monocular depth is NOT metric by itself
 
 # --- STEP 13: dynamic-object segmentation (runs BEFORE fusion) ---

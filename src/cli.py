@@ -464,7 +464,8 @@ def main(argv: list[str] | None = None) -> int:
                 "reconstruct-poses": cmd_reconstruct_poses,
                 "show-trajectory": cmd_show_trajectory,
                 "convert-gps": cmd_convert_gps,
-                "align-trajectory": cmd_align_trajectory}
+                "align-trajectory": cmd_align_trajectory,
+                "predict-depth": cmd_predict_depth}
     return handlers[args.command](args)
 
 
