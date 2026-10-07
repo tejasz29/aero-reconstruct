@@ -132,6 +132,8 @@ fusion:
   radius_nb_points: 8
   radius_m: 0.30
   estimate_normals: true
+  normals_k: 12
+  normals_max_points: 20000
 
 # --- STEP 14: meshing (Open3D Poisson baseline) ---
 mesh:
