@@ -147,3 +147,15 @@ def write_unproject_report(report: dict, path: str | Path) -> Path:
         json.dump(report, fh, indent=2, sort_keys=True)
     log.info("unproject report written: %s", p)
     return p
+
+
+def write_fusion_report(report: dict, path: str | Path) -> Path:
+    """Write ``fusion_report.json`` (voxel policy + before/after stats)."""
+    import json
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as fh:
+        json.dump(report, fh, indent=2, sort_keys=True)
+    log.info("fusion report written: %s", p)
+    return p
