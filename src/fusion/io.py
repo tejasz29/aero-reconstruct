@@ -12,14 +12,25 @@ log = get_logger("sp3d.fusion")
 
 
 def save_ply(points: np.ndarray, colors: np.ndarray,
-             path: str | Path) -> Path:
-    """Save Nx3 float + Nx3 uint8 as ascii PLY (no open3d needed)."""
+             path: str | Path, normals: np.ndarray | None = None) -> Path:
+    """Save Nx3 float + Nx3 uint8 as ascii PLY (no open3d needed).
+
+    ``normals`` is opt-in (STEP 11): when given, ``nx/ny/nz`` float
+    properties are appended; the 6-column reader stays backward compatible.
+    """
     pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     cols = np.asarray(colors, dtype=np.uint8).reshape(-1, 3)
     if len(pts) != len(cols):
         raise ValueError(f"points {len(pts)} != colors {len(cols)}")
     if len(pts) == 0:
         raise ValueError("cannot save an empty cloud")
+    nrm = None
+    if normals is not None:
+        nrm = np.asarray(normals, dtype=np.float64).reshape(-1, 3)
+        if len(nrm) != len(pts):
+            raise ValueError(f"points {len(pts)} != normals {len(nrm)}")
+        if not bool(np.all(np.isfinite(nrm))):
+            raise ValueError("normals must be finite")
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "w", encoding="utf-8") as fh:
@@ -27,9 +38,16 @@ def save_ply(points: np.ndarray, colors: np.ndarray,
         fh.write(f"element vertex {len(pts)}\n")
         fh.write("property float x\nproperty float y\nproperty float z\n")
         fh.write("property uchar red\nproperty uchar green\nproperty uchar blue\n")
+        if nrm is not None:
+            fh.write("property float nx\nproperty float ny\nproperty float nz\n")
         fh.write("end_header\n")
-        for (x, y, z), (r, g, b) in zip(pts, cols):
-            fh.write(f"{x:.6f} {y:.6f} {z:.6f} {int(r)} {int(g)} {int(b)}\n")
+        if nrm is None:
+            for (x, y, z), (r, g, b) in zip(pts, cols):
+                fh.write(f"{x:.6f} {y:.6f} {z:.6f} {int(r)} {int(g)} {int(b)}\n")
+        else:
+            for (x, y, z), (r, g, b), (nx, ny, nz) in zip(pts, cols, nrm):
+                fh.write(f"{x:.6f} {y:.6f} {z:.6f} {int(r)} {int(g)} {int(b)} "
+                         f"{nx:.6f} {ny:.6f} {nz:.6f}\n")
     return p
 
 
