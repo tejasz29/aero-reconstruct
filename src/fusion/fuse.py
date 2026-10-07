@@ -255,3 +255,14 @@ def fuse_clouds(points: np.ndarray, colors: np.ndarray,
             "normals": normals, "normals_backend": backend,
             "n_in": n_in, "n_out": len(fused_pts),
             "kept_ratio": len(fused_pts) / max(1, n_in)}
+
+
+def fused_stats(n_in: int, points: np.ndarray) -> dict:
+    """Count + bounds summary for the fusion report."""
+    from src.fusion.unproject import cloud_stats
+
+    stats = cloud_stats(np.asarray(points).reshape(-1, 3))
+    stats["n_in"] = int(n_in)
+    stats["n_out"] = int(stats.get("n_points", 0))
+    stats["removed"] = int(n_in - stats["n_out"])
+    return stats
