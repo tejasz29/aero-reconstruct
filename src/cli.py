@@ -499,6 +499,18 @@ def build_parser() -> argparse.ArgumentParser:
     uj.add_argument("--stride", type=int, default=None,
                     help="override fusion.unproject_stride.")
     uj.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
+
+    fc = sub.add_parser("fuse-cloud",
+                        help="STEP 11: fuse frame clouds -> scene_fused.ply.")
+    fc.add_argument("--cloud-index", default=None,
+                    help="cloud_index.csv (default: outputs/pointcloud/cloud_index.csv).")
+    fc.add_argument("--depth-index", default=None,
+                    help="depth_index.csv for confidence replay (default: outputs/depth/depth_index.csv).")
+    fc.add_argument("--output-dir", default=None,
+                    help="cloud output dir (default: outputs/pointcloud).")
+    fc.add_argument("--voxel-size", type=float, default=None,
+                    help="override fusion.voxel_size_m.")
+    fc.add_argument("--config", default=None, help="run config YAML (default.yaml + merge).")
     return parser
 
 
