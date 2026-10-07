@@ -237,6 +237,26 @@ def run_job(job_id: str) -> None:
         _fail(job_id, f"unproject-depth: {exc}")
         return
 
+    # STEP 11 — fuse frame clouds (non-fatal: raw STEP 10 scene stays valid)
+    _mark(job_id, "fuse-cloud", "running")
+    try:
+        from src.fusion.runner import run_fusion
+
+        fused = run_fusion(
+            cfg,
+            cloud_index=paths["pointcloud"] / "cloud_index.csv",
+            depth_index=paths["depth"] / "depth_index.csv",
+            output_dir=paths["pointcloud"],
+        )
+        job = store.load_job(job_id)
+        job.outputs["fused_ply"] = fused.get("fused_ply", "")
+        job.outputs["fused_points"] = fused.get("n_points", 0)
+        store.save_job(job)
+        _mark(job_id, "fuse-cloud", "done")
+    except Exception as exc:  # noqa: BLE001
+        _warn(job_id, f"fuse-cloud skipped: {exc}")
+        _mark(job_id, "fuse-cloud", "done", f"skipped: {exc}")
+
     # Finish
     job = store.load_job(job_id)
     for s in job.stages:
