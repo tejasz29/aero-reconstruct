@@ -184,6 +184,31 @@ def orient_normals(points: np.ndarray, normals: np.ndarray,
     return nrm
 
 
+def estimate_normals(points: np.ndarray, k: int = 12,
+                     viewpoint: np.ndarray | None = None) -> tuple[np.ndarray, str]:
+    """Estimate normals, preferring open3d when installed.
+
+    Returns ``(normals, backend)`` where backend is ``"open3d"`` or
+    ``"pca"``. Never raises for a missing open3d — always falls back.
+    """
+    try:
+        import open3d as o3d  # type: ignore
+
+        pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(
+            np.asarray(points, dtype=np.float64)))
+        pcd.estimate_normals(
+            search_param=o3d.geometry.KDTreeSearchParamKNN(knn=max(3, k)))
+        nrm = np.asarray(pcd.normals)
+        if len(nrm) != len(np.asarray(points).reshape(-1, 3)):
+            raise RuntimeError("open3d normal count mismatch")
+        return orient_normals(points, nrm, viewpoint), "open3d"
+    except ImportError:
+        pass
+    except Exception as exc:  # noqa: BLE001 — open3d failure falls back
+        log.warning("open3d normals failed (%s) — using PCA baseline", exc)
+    return orient_normals(points, estimate_normals_pca(points, k), viewpoint), "pca"
+
+
 def voxel_downsample(points: np.ndarray, colors: np.ndarray,
                      confidence: np.ndarray | None = None,
                      voxel_size: float = 0.10) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
