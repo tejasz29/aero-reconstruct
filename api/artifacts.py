@@ -101,6 +101,14 @@ def pointcloud(job_id: str) -> dict[str, Any]:
                 frames.append(dict(row))
     if scene is None:
         raise HTTPException(status_code=404, detail="scene.ply not ready")
+    fused = _find(job_id, "pointcloud", "scene_fused.ply")
+    fused_report: dict[str, Any] = {}
+    fused_p = _find(job_id, "reports", "fusion_report.json")
+    if fused_p is not None:
+        try:
+            fused_report = json.loads(fused_p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            fused_report = {}
     return {
         "scene_ply": str(scene),
         "scene_url": f"/api/files/{job_id}/pointcloud/scene.ply",
@@ -110,6 +118,10 @@ def pointcloud(job_id: str) -> dict[str, Any]:
         "absolute_crs": report.get("absolute_crs", False),
         "frames": frames,
         "report": report,
+        "fused_ply": str(fused) if fused is not None else None,
+        "fused_url": (f"/api/files/{job_id}/pointcloud/scene_fused.ply"
+                      if fused is not None else None),
+        "fused_report": fused_report,
     }
 
 
@@ -117,8 +129,8 @@ def pointcloud(job_id: str) -> dict[str, Any]:
 def reports(job_id: str) -> dict[str, Any]:
     names = ["calibration_report.json", "trajectory_report.json",
              "gps_report.json", "aligned_trajectory_report.json",
-             "aligned_trajectory_transform.json", "depth_report.json",
-             "unproject_report.json"]
+              "aligned_trajectory_transform.json", "depth_report.json",
+             "unproject_report.json", "fusion_report.json"]
     out: dict[str, Any] = {}
     for name in names:
         p = _find(job_id, "reports", name)
