@@ -140,6 +140,25 @@ class FusionPolicy:
                 "normals_max_points": self.normals_max_points}
 
 
+def resolve_fusion_policy(cfg: dict, voxel_size: float | None = None) -> FusionPolicy:
+    """Read the ``fusion.*`` STEP 11 knobs into a policy."""
+    from src.common.config_loader import get
+
+    defaults = FusionPolicy()
+    size = float(voxel_size if voxel_size is not None
+                 else get(cfg, "fusion.voxel_size_m", defaults.voxel_size_m))
+    if size <= 0.0:
+        raise ValueError(f"voxel_size must be positive, got {size}")
+    return FusionPolicy(
+        voxel_size_m=size,
+        estimate_normals=bool(get(cfg, "fusion.estimate_normals",
+                                  defaults.estimate_normals)),
+        normals_k=int(get(cfg, "fusion.normals_k", defaults.normals_k)),
+        normals_max_points=int(get(cfg, "fusion.normals_max_points",
+                                   defaults.normals_max_points)),
+    )
+
+
 def _poses_by_filename(poses_csv) -> dict:
     """Accepted STEP 5 poses keyed by filename (rejected frames skipped)."""
     from src.sfm.visualize import read_poses_csv
