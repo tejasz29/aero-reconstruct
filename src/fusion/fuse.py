@@ -30,25 +30,45 @@ def _weighted_voxel_average(keys: np.ndarray, points: np.ndarray,
                             colors: np.ndarray,
                             confidence: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Collapse points sharing a voxel via confidence-weighted averages."""
-    order = np.lexsort((keys[:, 2], keys[:, 1], keys[:, 0]))
-    keys, points = keys[order], np.asarray(points, dtype=np.float64)[order]
-    colors = np.asarray(colors, dtype=np.float64)[order]
-    conf = np.asarray(confidence, dtype=np.float64)[order].reshape(-1)
-    uniq, starts = np.unique(keys, axis=0, return_index=True)
-    # np.unique sorts; rebuild counts via searchsorted on sorted keys
-    sorted_idx = np.argsort([tuple(k) for k in keys.tolist()], kind="stable")
-    keys, points, colors, conf = keys[sorted_idx], points[sorted_idx], colors[sorted_idx], conf[sorted_idx]
-    uniq, idx, counts = np.unique(keys, axis=0, return_index=True, return_counts=True)
-    out_pts, out_cols, out_conf = [], [], []
-    for u, c in zip(counts, np.split(np.arange(len(keys)), np.cumsum(counts)[:-1])):
-        w = conf[c]
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    cols = np.asarray(colors, dtype=np.float64).reshape(-1, 3)
+    conf = np.asarray(confidence, dtype=np.float64).reshape(-1)
+    if not (len(keys) == len(pts) == len(cols) == len(conf)):
+        raise ValueError("keys/points/colors/confidence length mismatch")
+    uniq, inverse, counts = np.unique(keys, axis=0, return_index=True,
+                                      return_inverse=True, return_counts=True)
+    # np.unique with axis returns sorted uniq; group via inverse labels
+    out_pts = np.zeros((len(uniq), 3))
+    out_cols = np.zeros((len(uniq), 3))
+    out_conf = np.zeros(len(uniq))
+    for v in range(len(uniq)):
+        mask = inverse == v
+        w = np.where(np.isfinite(conf[mask]), conf[mask], 0.0)
         wsum = float(w.sum())
-        if not np.isfinite(wsum) or wsum <= 0.0:
-            w = np.ones_like(w)
+        if wsum <= 0.0:
+            w = np.ones(mask.sum())
             wsum = float(w.sum())
-        w /= wsum
-        out_pts.append((points[c] * w[:, None]).sum(axis=0))
-        out_cols.append(np.clip((colors[c] * w[:, None]).sum(axis=0), 0, 255))
-        out_conf.append(float(conf[c].mean()))
-    return (np.asarray(out_pts), np.asarray(out_cols, dtype=np.float64),
-            np.asarray(out_conf, dtype=np.float64))
+        w = w / wsum
+        out_pts[v] = (pts[mask] * w[:, None]).sum(axis=0)
+        out_cols[v] = np.clip((cols[mask] * w[:, None]).sum(axis=0), 0, 255)
+        out_conf[v] = float(conf[mask].mean()) if mask.sum() else 0.0
+    return out_pts, out_cols, out_conf
+
+
+def voxel_downsample(points: np.ndarray, colors: np.ndarray,
+                     confidence: np.ndarray | None = None,
+                     voxel_size: float = 0.10) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Downsample a cloud to one point per voxel (weighted average)."""
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if len(pts) == 0:
+        raise ValueError("cannot downsample an empty cloud")
+    cols = np.asarray(colors, dtype=np.uint8).reshape(-1, 3)
+    if len(cols) != len(pts):
+        raise ValueError(f"points {len(pts)} != colors {len(cols)}")
+    conf = (np.ones(len(pts), dtype=np.float64) if confidence is None
+            else np.asarray(confidence, dtype=np.float64).reshape(-1))
+    if len(conf) != len(pts):
+        raise ValueError("confidence length mismatch")
+    keys = voxel_keys(pts, voxel_size)
+    fused_pts, fused_cols, fused_conf = _weighted_voxel_average(keys, pts, cols, conf)
+    return fused_pts, np.clip(fused_cols, 0, 255).astype(np.uint8), fused_conf
