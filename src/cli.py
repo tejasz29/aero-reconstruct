@@ -379,6 +379,27 @@ def cmd_unproject_depth(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fuse_cloud(args: argparse.Namespace) -> int:
+    """STEP 11 — fuse STEP 10 frame clouds into a deduplicated scene."""
+    from pathlib import Path
+
+    cfg = load_config(args.config) if args.config else load_config()
+    cloud_index = Path(args.cloud_index) if args.cloud_index else None
+    depth_index = Path(args.depth_index) if args.depth_index else None
+    output_dir = Path(args.output_dir) if args.output_dir else None
+
+    from src.fusion.runner import run_fusion
+    result = run_fusion(cfg, cloud_index=cloud_index,
+                        depth_index=depth_index, output_dir=output_dir,
+                        voxel_size=args.voxel_size)
+    print(f"frames  : {result['n_frames']} fused -> {result['fused_ply']}")
+    print(f"points  : {result['n_in']} -> {result['n_points']} "
+          f"(kept {result['n_points'] / max(1, result['n_in']) * 100:.1f}%)")
+    print(f"normals : {result['normals_backend']} (metric-via-scale, NOT absolute CRS)")
+    print(f"report  : {result['report_json']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sp3d",
