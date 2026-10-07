@@ -172,13 +172,14 @@ Current total: **230 tests passing**.
 | 8 | Visual ↔ GPS alignment | ✅ done (RANSAC + Umeyama refinement, RTK-aware) |
 | 9 | Learned depth inference | ✅ done (dummy CPU + HF fallback, relative only) |
 | 10 | Depth → 3D | ✅ done (per-frame + merged, metric-via-scale) |
-| 11–12 | Fusion + filtering | ⬜ |
+| 11 | Point-cloud fusion | ✅ done (confidence-weighted voxel, normals, fuse-cloud) |
+| 12 | Point-cloud filtering | ⬜ |
 | 13 | Dynamic-object segmentation | ⬜ |
 | 14–15 | Mesh + texture | ⬜ |
 | 16–17 | Georeferencing + evaluation | ⬜ |
 | 18–19 | Viewer + backend | ⬜ |
 | 20 | Near-real-time optimisation | ⬜ (after offline works) |
 
-**Next recommended step: STEP 11** — point-cloud fusion
-(`src/fusion/`): merge per-frame clouds with confidence weighting, voxel
-downsample, duplicate removal. STEP 10 clouds are metric-via-scale inputs.
+**Next recommended step: STEP 12** — point-cloud filtering
+(`src/fusion/filter.py`): statistical + radius outlier removal on the STEP 11
+fused cloud, with before/after density stats.
