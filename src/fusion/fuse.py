@@ -94,6 +94,57 @@ def load_frame_clouds(cloud_index_csv) -> tuple[np.ndarray, np.ndarray, np.ndarr
             np.concatenate(all_conf, axis=0), kept)
 
 
+def recover_per_point_confidence(cloud_index_csv, depth_index_csv,
+                                 stride: int = 2) -> np.ndarray | None:
+    """Recover per-point confidence by replaying STEP 10 valid masks.
+
+    Returns concatenated per-point confidences aligned with
+    :func:`load_frame_clouds` order, or ``None`` when depth artefacts are
+    unavailable (caller falls back to frame means).
+    """
+    from pathlib import Path
+
+    try:
+        from src.depth.io import load_depth_npy, read_depth_index
+        from src.fusion.io import read_cloud_index
+        from src.fusion.unproject import valid_mask
+    except ImportError:
+        return None
+    cloud_rows = {r.get("filename"): r for r in read_cloud_index(cloud_index_csv)}
+    try:
+        depth_rows = read_depth_index(depth_index_csv)
+    except (FileNotFoundError, ValueError):
+        return None
+    base = Path(cloud_index_csv).parent
+    out: list[np.ndarray] = []
+    for drow in depth_rows:
+        fname = str(drow.get("filename", ""))
+        if fname not in cloud_rows:
+            continue
+        try:
+            depth = load_depth_npy(drow["depth_path"])
+        except (FileNotFoundError, KeyError):
+            return None
+        mask = valid_mask(depth)
+        if stride > 1:
+            keep = np.zeros_like(mask, dtype=bool)
+            keep[::stride, ::stride] = True
+            mask = mask & keep
+        conf_path = drow.get("confidence_path", "")
+        if conf_path:
+            try:
+                conf = np.load(str(conf_path)).astype(np.float64)[mask]
+            except (FileNotFoundError, ValueError):
+                conf = np.ones(int(mask.sum()), dtype=np.float64)
+        else:
+            conf = np.ones(int(mask.sum()), dtype=np.float64)
+        out.append(conf)
+    if not out:
+        return None
+    _ = base
+    return np.concatenate(out, axis=0)
+
+
 def voxel_downsample(points: np.ndarray, colors: np.ndarray,
                      confidence: np.ndarray | None = None,
                      voxel_size: float = 0.10) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
