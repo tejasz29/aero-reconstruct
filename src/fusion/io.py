@@ -89,7 +89,8 @@ def load_ply_with_normals(path: str | Path) -> tuple[np.ndarray, np.ndarray, np.
     return pts, cols, None
 
 
-def validate_cloud(points: np.ndarray, colors: np.ndarray) -> None:
+def validate_cloud(points: np.ndarray, colors: np.ndarray,
+                     normals: np.ndarray | None = None) -> None:
     """Raise when a cloud breaks the finite/shape/color contract."""
     pts = np.asarray(points)
     cols = np.asarray(colors)
@@ -101,6 +102,12 @@ def validate_cloud(points: np.ndarray, colors: np.ndarray) -> None:
         raise ValueError("cloud points must be finite")
     if cols.min() < 0 or cols.max() > 255:
         raise ValueError("cloud colors must be in [0, 255]")
+    if normals is not None:
+        nrm = np.asarray(normals)
+        if nrm.shape != pts.shape:
+            raise ValueError(f"normals {nrm.shape} != points {pts.shape}")
+        if not bool(np.all(np.isfinite(nrm))):
+            raise ValueError("cloud normals must be finite")
 
 
 CLOUD_INDEX_HEADER = ["frame_id", "filename", "n_points", "ply_path",
