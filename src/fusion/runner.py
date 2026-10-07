@@ -300,3 +300,84 @@ def run_unprojection(cfg: dict, depth_index=None, poses_csv=None,
             "scene_ply": scene_ply, "index_csv": index_csv, "stats": stats,
             "report_json": report_json,
             "n_points": len(merged_pts), "n_frames": len(per_frame)}
+
+
+def run_fusion(cfg: dict, cloud_index=None, depth_index=None,
+               output_dir=None, voxel_size: float | None = None,
+               stride: int | None = None) -> dict:
+    """STEP 11 entry point: fuse STEP 10 frame clouds into scene_fused.ply."""
+    from pathlib import Path
+
+    import numpy as np
+
+    from src.fusion.fuse import (fuse_clouds, fused_stats, load_frame_clouds,
+                                 recover_per_point_confidence)
+    from src.fusion.io import save_ply, validate_cloud, write_fusion_report
+    from src.fusion.types import SCALE_NOTE
+    from src.fusion.unproject import cloud_stats
+
+    paths = resolve_fusion_paths(cfg, cloud_index, depth_index, output_dir)
+    policy = resolve_fusion_policy(cfg, voxel_size=voxel_size)
+    from src.common.config_loader import get
+    step_stride = int(stride if stride is not None
+                      else get(cfg, "fusion.unproject_stride", 2))
+    pts, cols, frame_conf, kept_rows = load_frame_clouds(paths.cloud_index)
+    log.info("fusing %d points from %d frames (voxel=%.3f m)",
+             len(pts), len(kept_rows), policy.voxel_size_m)
+    per_point = recover_per_point_confidence(paths.cloud_index, paths.depth_index,
+                                             stride=step_stride)
+    if per_point is not None and len(per_point) == len(pts):
+        conf, conf_source = per_point.astype(np.float64), "depth_replay"
+    else:
+        if per_point is not None:
+            log.warning("depth-replay confidence length %d != %d points — "
+                        "using frame means", len(per_point), len(pts))
+        conf, conf_source = frame_conf.astype(np.float64), "frame_mean"
+    result = fuse_clouds(pts, cols, conf, voxel_size=policy.voxel_size_m,
+                         estimate_normals_flag=policy.estimate_normals,
+                         normals_k=policy.normals_k)
+    fused_pts = np.asarray(result["points"])
+    fused_cols = np.asarray(result["colors"], dtype=np.uint8)
+    validate_cloud(fused_pts, fused_cols, result["normals"])
+    out_dir = Path(paths.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fused_ply = str(save_ply(fused_pts, fused_cols, paths.fused_ply,
+                             normals=result["normals"]))
+    try:
+        import laspy  # type: ignore  # optional LAS export
+        las_path = out_dir / "scene_fused.las"
+        header = laspy.LasHeader(version="1.4", point_format=3)
+        las = laspy.LasData(header)
+        las.x, las.y, las.z = fused_pts[:, 0], fused_pts[:, 1], fused_pts[:, 2]
+        las.red = (fused_cols[:, 0].astype(np.uint16) * 257)
+        las.green = (fused_cols[:, 1].astype(np.uint16) * 257)
+        las.blue = (fused_cols[:, 2].astype(np.uint16) * 257)
+        las.write(las_path)
+        las_export = str(las_path)
+    except ImportError:
+        log.warning("laspy not installed — skipping LAS export")
+        las_export = ""
+    except Exception as exc:  # noqa: BLE001 — LAS export never fatal
+        log.warning("LAS export failed (%s) — continuing with PLY only", exc)
+        las_export = ""
+    stats = fused_stats(result["n_in"], fused_pts)
+    raw_stats = cloud_stats(pts)
+    report = {"n_frames": len(kept_rows), "n_in": result["n_in"],
+              "n_points": result["n_out"], "kept_ratio": result["kept_ratio"],
+              "voxel_size_m": policy.voxel_size_m,
+              "normals": {"enabled": policy.estimate_normals,
+                          "backend": result["normals_backend"]},
+              "confidence_source": conf_source,
+              "metric_via_gps_scale": True, "absolute_crs": False,
+              "policy": policy.as_dict(), "stats": stats,
+              "raw_stats": raw_stats, "fused_ply": fused_ply,
+              "las": las_export, "cloud_index": str(paths.cloud_index),
+              "note": SCALE_NOTE}
+    report_json = str(write_fusion_report(report, paths.report_json))
+    log.warning("fused cloud is metric-via-scale, NOT absolute CRS — %s", SCALE_NOTE)
+    return {"paths": paths, "policy": policy, "n_in": result["n_in"],
+            "n_points": result["n_out"], "n_frames": len(kept_rows),
+            "fused_ply": fused_ply, "las": las_export,
+            "report_json": report_json, "stats": stats,
+            "normals_backend": result["normals_backend"],
+            "note": SCALE_NOTE}
