@@ -128,3 +128,34 @@ def test_run_fusion_e2e_synthetic(tmp_path):
     assert res["n_in"] == 80
     assert res["n_points"] <= 80
     assert (out / "scene_fused.ply").is_file()
+
+
+def test_fusion_policy_and_parser():
+    from src.common.config_loader import load_config
+    from src.fusion.runner import resolve_fusion_policy
+
+    import pytest
+
+    cfg = load_config()
+    pol = resolve_fusion_policy(cfg, voxel_size=0.25)
+    assert pol.voxel_size_m == 0.25
+    with pytest.raises(ValueError):
+        resolve_fusion_policy(cfg, voxel_size=0.0)
+    cv2 = pytest.importorskip("cv2", reason="full pipeline deps missing")
+    assert cv2 is not None
+    from src.cli import build_parser
+
+    args = build_parser().parse_args(["fuse-cloud"])
+    assert args.command == "fuse-cloud"
+
+
+def test_run_fusion_rejects_empty_index(tmp_path):
+    import pytest
+
+    from src.common.config_loader import load_config
+    from src.fusion.runner import run_fusion
+
+    empty = tmp_path / "cloud_index.csv"
+    empty.write_text("frame_id,filename,n_points,ply_path,mean_confidence\n")
+    with pytest.raises(ValueError):
+        run_fusion(load_config(), cloud_index=empty, output_dir=tmp_path)
