@@ -173,6 +173,40 @@ def _poses_by_filename(poses_csv) -> dict:
     return table
 
 
+@dataclass(frozen=True)
+class FusionPaths:
+    """Input and output locations of one fusion run."""
+
+    cloud_index: object
+    depth_index: object
+    output_dir: object
+    fused_ply: object
+    report_json: object
+
+
+def resolve_fusion_paths(cfg: dict, cloud_index=None, depth_index=None,
+                         output_dir=None) -> FusionPaths:
+    """Resolve STEP 10 cloud index + fused outputs."""
+    from pathlib import Path
+
+    from src.common.config_loader import get
+    from src.common.paths import PROJECT_ROOT
+
+    def _abs(p) -> Path:
+        c = Path(p)
+        return c if c.is_absolute() else PROJECT_ROOT / c
+
+    out = Path(output_dir) if output_dir else _abs("outputs/pointcloud")
+    if not out.is_absolute():
+        out = PROJECT_ROOT / out
+    reports = _abs(get(cfg, "paths.reports", "outputs/reports"))
+    cloud = Path(cloud_index) if cloud_index else out / "cloud_index.csv"
+    depth = Path(depth_index) if depth_index else _abs("outputs/depth") / "depth_index.csv"
+    return FusionPaths(cloud_index=cloud, depth_index=depth, output_dir=out,
+                       fused_ply=out / "scene_fused.ply",
+                       report_json=reports / "fusion_report.json")
+
+
 def run_unprojection(cfg: dict, depth_index=None, poses_csv=None,
                      camera_yaml=None, transform_json=None, frames_dir=None,
                      output_dir=None, stride: int | None = None) -> dict:
