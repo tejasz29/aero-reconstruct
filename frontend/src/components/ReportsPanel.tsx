@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
-/** Raw pipeline reports (STEPS 4-10): calibration, trajectory, GPS, depth, unproject. */
+/** Raw pipeline reports (STEPS 4-11): calibration, trajectory, GPS, depth, fusion. */
 export default function ReportsPanel({ jobId }: { jobId: string }) {
   const [reports, setReports] = useState<Record<string, unknown>>({});
   const [err, setErr] = useState("");
@@ -32,7 +32,8 @@ export default function ReportsPanel({ jobId }: { jobId: string }) {
       ))}
       <p style={{ fontSize: 11, color: "#9aa4b8" }}>
         depth is relative until STEP 10 applies the STEP 8 GPS scale; RMSE describes
-        alignment fit only, not absolute cm-accuracy.
+        alignment fit only, not absolute cm-accuracy. STEP 11 fusion only
+        averages observed points — gaps stay gaps, nothing is invented.
       </p>
     </div>
   );
