@@ -35,8 +35,8 @@ def _weighted_voxel_average(keys: np.ndarray, points: np.ndarray,
     conf = np.asarray(confidence, dtype=np.float64).reshape(-1)
     if not (len(keys) == len(pts) == len(cols) == len(conf)):
         raise ValueError("keys/points/colors/confidence length mismatch")
-    uniq, inverse, counts = np.unique(keys, axis=0, return_index=True,
-                                      return_inverse=True, return_counts=True)
+    uniq, _idx, inverse, counts = np.unique(keys, axis=0, return_index=True,
+                                                return_inverse=True, return_counts=True)
     # np.unique with axis returns sorted uniq; group via inverse labels
     out_pts = np.zeros((len(uniq), 3))
     out_cols = np.zeros((len(uniq), 3))
