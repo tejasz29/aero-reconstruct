@@ -226,3 +226,32 @@ def voxel_downsample(points: np.ndarray, colors: np.ndarray,
     keys = voxel_keys(pts, voxel_size)
     fused_pts, fused_cols, fused_conf = _weighted_voxel_average(keys, pts, cols, conf)
     return fused_pts, np.clip(fused_cols, 0, 255).astype(np.uint8), fused_conf
+
+
+def fuse_clouds(points: np.ndarray, colors: np.ndarray,
+                confidence: np.ndarray | None = None,
+                voxel_size: float = 0.10,
+                estimate_normals_flag: bool = True,
+                normals_k: int = 12) -> dict:
+    """Full STEP 11 fusion: voxel-dedupe then optional normals.
+
+    Returns dict with ``points/colors/confidence/normals`` (normals None
+    when disabled), ``n_in/n_out``, ``normals_backend`` and ``kept_ratio``.
+    Never invents geometry — output is a subset-averaging of the input.
+    """
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    n_in = len(pts)
+    if n_in == 0:
+        raise ValueError("cannot fuse an empty cloud")
+    fused_pts, fused_cols, fused_conf = voxel_downsample(
+        pts, colors, confidence, voxel_size)
+    normals = None
+    backend = "none"
+    if estimate_normals_flag and len(fused_pts) >= 3:
+        normals, backend = estimate_normals(fused_pts, k=normals_k)
+    elif estimate_normals_flag:
+        log.warning("too few fused points (%d) for normals — skipped", len(fused_pts))
+    return {"points": fused_pts, "colors": fused_cols, "confidence": fused_conf,
+            "normals": normals, "normals_backend": backend,
+            "n_in": n_in, "n_out": len(fused_pts),
+            "kept_ratio": len(fused_pts) / max(1, n_in)}
