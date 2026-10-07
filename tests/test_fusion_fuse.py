@@ -86,3 +86,18 @@ def test_fuse_clouds_stats_and_normals():
     assert out["n_out"] <= 60
     assert out["normals"] is not None
     assert out["normals_backend"] in ("pca", "open3d")
+
+
+def test_ply_normals_roundtrip(tmp_path):
+    from src.fusion.io import (load_ply, load_ply_with_normals, save_ply,
+                               validate_cloud)
+
+    pts = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    cols = np.array([[255, 0, 0], [0, 255, 0]], dtype=np.uint8)
+    nrm = np.array([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0]])
+    p = save_ply(pts, cols, tmp_path / "n.ply", normals=nrm)
+    back_pts, back_cols = load_ply(p)  # backward compat: ignores normals
+    assert np.allclose(back_pts, pts, atol=1e-6)
+    _, _, back_nrm = load_ply_with_normals(p)
+    assert back_nrm is not None and np.allclose(back_nrm, nrm, atol=1e-6)
+    validate_cloud(back_pts, back_cols, back_nrm)
