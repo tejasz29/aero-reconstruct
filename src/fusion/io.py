@@ -52,7 +52,11 @@ def save_ply(points: np.ndarray, colors: np.ndarray,
 
 
 def load_ply(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
-    """Load ascii PLY back to (points Nx3 float, colors Nx3 uint8)."""
+    """Load ascii PLY back to (points Nx3 float, colors Nx3 uint8).
+
+    Accepts 6-column (xyzrgb) and 9-column (xyzrgb+nxnynz) clouds; normals
+    are ignored here — use :func:`load_ply_with_normals` when needed.
+    """
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(f"cloud not found: {p}")
@@ -66,9 +70,23 @@ def load_ply(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     if not data:
         raise ValueError(f"empty PLY cloud: {p}")
     arr = np.asarray(data, dtype=np.float64)
-    if arr.shape[1] != 6:
-        raise ValueError(f"PLY must have xyzrgb columns: {p}")
+    if arr.shape[1] not in (6, 9):
+        raise ValueError(f"PLY must have xyzrgb[+normals] columns: {p}")
     return arr[:, :3], arr[:, 3:6].astype(np.uint8)
+
+
+def load_ply_with_normals(path: str | Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """Load a PLY cloud, returning normals too (None for 6-column files)."""
+    pts, cols = load_ply(path)
+    p = Path(path)
+    with open(p, "r", encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    end = lines.index("end_header")
+    data = [ln.split() for ln in lines[end + 1:] if ln.strip()]
+    arr = np.asarray(data, dtype=np.float64)
+    if arr.shape[1] == 9:
+        return pts, cols, arr[:, 6:9]
+    return pts, cols, None
 
 
 def validate_cloud(points: np.ndarray, colors: np.ndarray) -> None:
