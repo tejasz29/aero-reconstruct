@@ -15,6 +15,7 @@ STAGES = [
     "align-trajectory",  # STEP 8
     "predict-depth",     # STEP 9
     "unproject-depth",   # STEP 10
+    "fuse-cloud",        # STEP 11
 ]
 
 JOB_STATUSES = (
