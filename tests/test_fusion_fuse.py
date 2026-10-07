@@ -61,3 +61,28 @@ def test_normals_reject_empty():
 
     with pytest.raises(ValueError):
         estimate_normals_pca(np.zeros((0, 3)))
+
+
+def test_pca_normals_planar_cloud():
+    from src.fusion.fuse import estimate_normals_pca, orient_normals
+
+    rng = np.random.default_rng(0)
+    pts = np.column_stack([rng.uniform(-1, 1, 40), rng.uniform(-1, 1, 40),
+                           np.zeros(40)])
+    nrm = orient_normals(pts, estimate_normals_pca(pts, k=6))
+    assert nrm.shape == (40, 3)
+    assert float(np.abs(nrm[:, 2]).mean()) > 0.99
+    assert np.all(np.isfinite(nrm))
+
+
+def test_fuse_clouds_stats_and_normals():
+    from src.fusion.fuse import fuse_clouds
+
+    rng = np.random.default_rng(3)
+    pts = np.vstack([rng.uniform(0, 1, (30, 3)), rng.uniform(0, 1, (30, 3))])
+    cols = (rng.uniform(0, 255, (60, 3))).astype(np.uint8)
+    out = fuse_clouds(pts, cols, voxel_size=0.25)
+    assert out["n_in"] == 60
+    assert out["n_out"] <= 60
+    assert out["normals"] is not None
+    assert out["normals_backend"] in ("pca", "open3d")
