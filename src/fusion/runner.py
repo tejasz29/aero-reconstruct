@@ -124,6 +124,22 @@ def _load_scale(transform_json) -> float:
     return float(transform.scale)
 
 
+@dataclass(frozen=True)
+class FusionPolicy:
+    """Every tunable STEP 11 fusion obeys, resolved from config."""
+
+    voxel_size_m: float = 0.10
+    estimate_normals: bool = True
+    normals_k: int = 12
+    normals_max_points: int = 20000
+
+    def as_dict(self) -> dict:
+        return {"voxel_size_m": self.voxel_size_m,
+                "estimate_normals": self.estimate_normals,
+                "normals_k": self.normals_k,
+                "normals_max_points": self.normals_max_points}
+
+
 def _poses_by_filename(poses_csv) -> dict:
     """Accepted STEP 5 poses keyed by filename (rejected frames skipped)."""
     from src.sfm.visualize import read_poses_csv
