@@ -23,3 +23,22 @@ def test_voxel_collapses_duplicates():
     cols = np.array([[255, 0, 0], [0, 255, 0], [0, 0, 255]], dtype=np.uint8)
     p, _c, _f = voxel_downsample(pts, cols, voxel_size=0.1)
     assert len(p) == 2  # first two share a voxel
+
+
+def test_weighted_average_prefers_confident_point():
+    pts = np.array([[0.0, 0.0, 0.0], [0.05, 0.0, 0.0]])
+    cols = np.array([[0, 0, 0], [200, 200, 200]], dtype=np.uint8)
+    conf = np.array([0.05, 0.95])
+    p, c, _f = voxel_downsample(pts, cols, conf, voxel_size=0.5)
+    assert len(p) == 1
+    assert p[0, 0] > 0.03  # pulled toward the confident point
+    assert c[0, 0] > 150
+
+
+def test_downsample_deterministic():
+    rng = np.random.default_rng(7)
+    pts = rng.uniform(0, 1, (50, 3))
+    cols = (rng.uniform(0, 255, (50, 3))).astype(np.uint8)
+    a = voxel_downsample(pts, cols, voxel_size=0.2)
+    b = voxel_downsample(pts[::-1], cols[::-1], voxel_size=0.2)
+    assert np.allclose(np.sort(a[0].ravel()), np.sort(b[0].ravel()))
