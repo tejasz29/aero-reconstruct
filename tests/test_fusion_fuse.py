@@ -101,3 +101,30 @@ def test_ply_normals_roundtrip(tmp_path):
     _, _, back_nrm = load_ply_with_normals(p)
     assert back_nrm is not None and np.allclose(back_nrm, nrm, atol=1e-6)
     validate_cloud(back_pts, back_cols, back_nrm)
+
+
+def test_run_fusion_e2e_synthetic(tmp_path):
+    from src.common.config_loader import load_config
+    from src.fusion.io import save_ply, write_cloud_index
+    from src.fusion.runner import run_fusion
+
+    rng = np.random.default_rng(11)
+    frames = tmp_path / "frames"
+    frames.mkdir()
+    out = tmp_path / "cloud"
+    out.mkdir()
+    rows = []
+    for i in range(2):
+        pts = rng.uniform(0, 1, (40, 3)) + np.array([i * 0.05, 0.0, 0.0])
+        cols = (rng.uniform(0, 255, (40, 3))).astype(np.uint8)
+        ply = out / f"frame_{i}.ply"
+        save_ply(pts, cols, ply)
+        rows.append({"frame_id": i, "filename": f"f{i}.jpg",
+                     "n_points": 40, "ply_path": str(ply),
+                     "mean_confidence": 0.8})
+    index = write_cloud_index(rows, out / "cloud_index.csv")
+    cfg = load_config()
+    res = run_fusion(cfg, cloud_index=index, output_dir=out, voxel_size=0.2)
+    assert res["n_in"] == 80
+    assert res["n_points"] <= 80
+    assert (out / "scene_fused.ply").is_file()
