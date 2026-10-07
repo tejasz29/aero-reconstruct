@@ -50,6 +50,8 @@ export const api = {
       scale: number;
       absolute_crs: boolean;
       report: Record<string, unknown>;
+      fused_url: string | null;
+      fused_report: { n_points?: number; kept_ratio?: number } & Record<string, unknown>;
     }>(`/api/jobs/${id}/pointcloud`),
   reports: (id: string) =>
     req<{ reports: Record<string, unknown> }>(`/api/jobs/${id}/reports`),

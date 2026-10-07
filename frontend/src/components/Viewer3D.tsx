@@ -4,11 +4,13 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 import { api, type Pose } from "../api";
 
-/** 3D viewer: scene.ply (STEP 10) + camera path (STEP 5), orbit/pan/zoom. */
+/** 3D viewer: scene.ply (STEP 10) / scene_fused.ply (STEP 11) + path (STEP 5). */
 export default function Viewer3D({ jobId }: { jobId: string }) {
   const mount = useRef<HTMLDivElement>(null);
   const [info, setInfo] = useState("loading…");
   const [stats, setStats] = useState({ kept: 0, rejected: 0, nPoints: 0 });
+  const [fused, setFused] = useState(true);
+  const [hasFused, setHasFused] = useState(false);
 
   useEffect(() => {
     if (!jobId || !mount.current) return;
@@ -67,17 +69,21 @@ export default function Viewer3D({ jobId }: { jobId: string }) {
         if (!dead) setInfo("trajectory not ready yet (run reconstruct-poses)");
       }
 
-      // Point cloud (STEP 10 scene.ply via /pointcloud -> scene_url).
+      // Point cloud (STEP 10 raw or STEP 11 fused via /pointcloud).
       try {
         const pc = await api.pointcloud(jobId);
         if (dead) return;
-        setStats((s) => ({ ...s, nPoints: pc.n_points }));
+        setHasFused(!!pc.fused_url);
+        const url = fused && pc.fused_url ? pc.fused_url : pc.scene_url;
+        const nPts = fused && pc.fused_url ? pc.fused_report?.n_points ?? pc.n_points : pc.n_points;
+        setStats((s) => ({ ...s, nPoints: nPts as number }));
         setInfo(
-          `scale ${pc.scale} m/unit · metric-via-scale, NOT absolute CRS · ${pc.n_points} pts`,
+          `${fused && pc.fused_url ? "fused" : "raw"} · scale ${pc.scale} m/unit · ` +
+            `metric-via-scale, NOT absolute CRS · ${nPts} pts`,
         );
         const loader = new PLYLoader();
         loader.load(
-          pc.scene_url,
+          url,
           (geo) => {
             if (dead) return;
             geo.computeVertexNormals();
@@ -114,7 +120,7 @@ export default function Viewer3D({ jobId }: { jobId: string }) {
       cancelAnimationFrame(raf);
       renderer?.dispose();
     };
-  }, [jobId]);
+  }, [jobId, fused]);
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -122,6 +128,11 @@ export default function Viewer3D({ jobId }: { jobId: string }) {
         <span style={{ fontSize: 12, color: "#9aa4b8" }}>
           kept {stats.kept} · rejected {stats.rejected} · points {stats.nPoints} · {info}
         </span>
+        {hasFused && (
+          <button style={{ fontSize: 12 }} onClick={() => setFused((f) => !f)}>
+            show {fused ? "raw" : "fused"}
+          </button>
+        )}
       </div>
       <div ref={mount} style={{ flex: 1, minHeight: 380 }} />
     </div>
