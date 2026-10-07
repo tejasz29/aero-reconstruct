@@ -33,7 +33,9 @@ or, after ``pip install -e .``::
 * ``predict-depth`` — STEP 9: relative monocular depth + confidence per
   keyframe -> outputs/depth/*.npy + depth_index.csv + report.
 * ``unproject-depth`` — STEP 10: depth -> per-frame + merged colored clouds
-  -> outputs/pointcloud/scene.ply + cloud_index.csv + report.
+   -> outputs/pointcloud/scene.ply + cloud_index.csv + report.
+* ``fuse-cloud`` — STEP 11: confidence-weighted voxel fusion of frame clouds
+   -> outputs/pointcloud/scene_fused.ply + fusion report.
 
 Pipeline-stage subcommands for later STEPS are added as those steps land.
 """
@@ -547,7 +549,8 @@ def main(argv: list[str] | None = None) -> int:
                 "convert-gps": cmd_convert_gps,
                 "align-trajectory": cmd_align_trajectory,
                 "predict-depth": cmd_predict_depth,
-                "unproject-depth": cmd_unproject_depth}
+                "unproject-depth": cmd_unproject_depth,
+                "fuse-cloud": cmd_fuse_cloud}
     return handlers[args.command](args)
 
 
