@@ -55,6 +55,45 @@ def _weighted_voxel_average(keys: np.ndarray, points: np.ndarray,
     return out_pts, out_cols, out_conf
 
 
+def load_frame_clouds(cloud_index_csv) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[dict]]:
+    """Load per-frame PLYs listed in ``cloud_index.csv`` (STEP 10 output)."""
+    from pathlib import Path
+
+    from src.fusion.io import load_ply, read_cloud_index
+
+    rows = read_cloud_index(cloud_index_csv)
+    if not rows:
+        raise ValueError(f"no cloud rows in {cloud_index_csv}")
+    base = Path(cloud_index_csv).parent
+    all_pts, all_cols, all_conf, kept = [], [], [], []
+    for row in rows:
+        ply_rel = str(row.get("ply_path", ""))
+        if not ply_rel:
+            log.warning("no ply_path for %s — skipped", row.get("filename", "?"))
+            continue
+        ply = Path(ply_rel) if Path(ply_rel).is_absolute() else base / Path(ply_rel).name
+        if not ply.is_file():
+            # absolute STEP 10 paths may point at tmp dirs; try sibling name
+            alt = base / Path(ply_rel).name
+            ply = alt if alt.is_file() else ply
+        if not ply.is_file():
+            log.warning("missing frame cloud %s — skipped", ply)
+            continue
+        pts, cols = load_ply(ply)
+        try:
+            mean_conf = float(row.get("mean_confidence", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            mean_conf = 1.0
+        all_pts.append(np.asarray(pts, dtype=np.float64))
+        all_cols.append(np.asarray(cols, dtype=np.uint8))
+        all_conf.append(np.full(len(pts), mean_conf, dtype=np.float64))
+        kept.append(row)
+    if not all_pts:
+        raise ValueError(f"no loadable frame clouds in {cloud_index_csv}")
+    return (np.concatenate(all_pts, axis=0), np.concatenate(all_cols, axis=0),
+            np.concatenate(all_conf, axis=0), kept)
+
+
 def voxel_downsample(points: np.ndarray, colors: np.ndarray,
                      confidence: np.ndarray | None = None,
                      voxel_size: float = 0.10) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
