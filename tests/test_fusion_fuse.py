@@ -42,3 +42,22 @@ def test_downsample_deterministic():
     a = voxel_downsample(pts, cols, voxel_size=0.2)
     b = voxel_downsample(pts[::-1], cols[::-1], voxel_size=0.2)
     assert np.allclose(np.sort(a[0].ravel()), np.sort(b[0].ravel()))
+
+
+def test_downsample_rejects_empty_and_mismatch():
+    import pytest
+
+    with pytest.raises(ValueError):
+        voxel_downsample(np.zeros((0, 3)), np.zeros((0, 3), dtype=np.uint8))
+    with pytest.raises(ValueError):
+        voxel_downsample(np.ones((2, 3)),
+                         np.ones((3, 3), dtype=np.uint8))
+
+
+def test_normals_reject_empty():
+    import pytest
+
+    from src.fusion.fuse import estimate_normals_pca
+
+    with pytest.raises(ValueError):
+        estimate_normals_pca(np.zeros((0, 3)))
