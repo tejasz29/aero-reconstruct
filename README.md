@@ -155,8 +155,13 @@ keyframes + tiny-image determinism, CLI surface.
 (STEP 10) pinhole unproject + reproject round-trip, pose/scale correctness,
 colored-cloud color/stride/invalid/determinism, PLY/index/report round-trips,
 runner e2e (2-frame synthetic, merged + per-frame, scale flag) + CLI surface.
+(STEP 11) voxel quantization/collapse, confidence-weighted averaging,
+determinism, invalid-input rejection, PCA normals on a planar cloud,
+fuse orchestrator stats, 9-column PLY round-trip, run_fusion e2e on synthetic
+frames, policy/CLI surface (CLI part skips without cv2).
 
-Current total: **230 tests passing**.
+Current total: **230 + 13 fusion tests passing** (22 passed, 1 skipped in the
+STEP 11 + API slice verified 2026-10-07).
 
 ## 6. Pipeline status
 
