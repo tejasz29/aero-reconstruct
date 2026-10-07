@@ -4,7 +4,7 @@ Source of truth for build order. A step is **done** only when: implemented,
 tested green, demoed on real or synthetic data, README status updated, and
 committed + pushed. Never start the next step on a broken tree.
 
-**Progress: STEPS 1–10 done · STEP 11 next · 230/230 tests passing.**
+**Progress: STEPS 1–11 done · STEP 12 next · fusion tests green.**
 
 Conventions every step follows: tunables live in `configs/default.yaml`
 (never hard-coded); every stage logs via `src.common.logging_utils`;
@@ -331,11 +331,21 @@ errors, CLI parser + e2e).
 **Commits (34):** STEP 10 split into 34 granular commits (types, unproject,
 pose/scale, cloud, io, runner, CLI, config, tests, docs) — see `git log`.
 
-## STEP 11 — Point-cloud fusion ⬜
+## STEP 11 — Point-cloud fusion ✅ done
 
 **What:** Merge all frames: confidence weighting, voxel downsample, duplicate
-removal, normal estimation. **Outputs:** `outputs/pointcloud/scene.ply`
-(+ LAS/LAZ). **Files:** `src/fusion/` · CLI `fuse-cloud`.
+removal, normal estimation. **Outputs:** `outputs/pointcloud/scene_fused.ply`
+(+ LAS/LAZ when laspy installed; STEP 10 `scene.ply` kept as raw).
+**Files:** `src/fusion/fuse.py` (`voxel_keys`, `voxel_downsample`,
+`load_frame_clouds`, `recover_per_point_confidence`, `estimate_normals_pca`,
+`estimate_normals` with open3d-optional fallback, `fuse_clouds`) ·
+`src/fusion/io.py` += 9-column PLY + `write_fusion_report` ·
+`src/fusion/runner.py` += `FusionPolicy/Paths`, `run_fusion` · CLI `fuse-cloud`.
+**Tests:** `tests/test_fusion_fuse.py` (voxel, weighting, determinism,
+normals, PLY round-trip, runner e2e, policy/CLI).
+**Verify:** `python -m src.cli fuse-cloud` → check `scene_fused.ply` +
+`outputs/reports/fusion_report.json`; fused cloud stays metric-via-scale,
+NOT absolute CRS.
 
 ## STEP 12 — Point-cloud filtering ⬜
 
