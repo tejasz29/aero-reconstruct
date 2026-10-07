@@ -145,6 +145,45 @@ def recover_per_point_confidence(cloud_index_csv, depth_index_csv,
     return np.concatenate(out, axis=0)
 
 
+def estimate_normals_pca(points: np.ndarray, k: int = 12) -> np.ndarray:
+    """PCA normals baseline: smallest eigenvector of k-nearest covariance.
+
+    O(N^2) brute force — fine for unit tests and small scenes; the runner
+    subsamples large clouds before calling this (see ``run_fusion``).
+    """
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    n = len(pts)
+    if n == 0:
+        raise ValueError("cannot estimate normals of an empty cloud")
+    if k < 3:
+        raise ValueError(f"k must be >= 3, got {k}")
+    k = min(k, n)
+    normals = np.zeros((n, 3))
+    for i in range(n):
+        d2 = ((pts - pts[i]) ** 2).sum(axis=1)
+        nn = np.argpartition(d2, k - 1)[:k]
+        cov = np.cov((pts[nn] - pts[nn].mean(axis=0)).T)
+        vals, vecs = np.linalg.eigh(cov)
+        normals[i] = vecs[:, 0]
+    return normals
+
+
+def orient_normals(points: np.ndarray, normals: np.ndarray,
+                   viewpoint: np.ndarray | None = None) -> np.ndarray:
+    """Flip normals toward ``viewpoint`` (default: cloud centroid +z)."""
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    nrm = np.asarray(normals, dtype=np.float64).reshape(-1, 3)
+    if len(pts) != len(nrm):
+        raise ValueError("points/normals length mismatch")
+    if viewpoint is None:
+        viewpoint = pts.mean(axis=0) + np.array([0.0, 0.0, 1.0])
+    vp = np.asarray(viewpoint, dtype=np.float64).reshape(3)
+    to_view = vp - pts
+    flip = (nrm * to_view).sum(axis=1) < 0.0
+    nrm[flip] *= -1.0
+    return nrm
+
+
 def voxel_downsample(points: np.ndarray, colors: np.ndarray,
                      confidence: np.ndarray | None = None,
                      voxel_size: float = 0.10) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
